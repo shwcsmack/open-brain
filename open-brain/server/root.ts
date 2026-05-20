@@ -1,12 +1,13 @@
 import { router } from './trpc'
 import { authRouter } from './routers/auth'
+import { noteRouter } from './routers/note'
 
 // Stub routers — will be replaced in subsequent tasks
 const stubRouter = router({})
 
 export const appRouter = router({
   auth: authRouter,
-  note: stubRouter,
+  note: noteRouter,
   noteLink: stubRouter,
   task: stubRouter,
   graph: stubRouter,
