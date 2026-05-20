@@ -147,3 +147,18 @@
   color: hsl(var(--muted-foreground));
   border: 1px dashed hsl(var(--muted-foreground) / 0.5);
 }
+
+/* Task list checkboxes in Tiptap */
+ul[data-type="taskList"] {
+  list-style: none;
+  padding: 0;
+}
+ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  user-select: none;
+}
