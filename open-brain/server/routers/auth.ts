@@ -33,6 +33,6 @@ export const authRouter = router({
     }),
 
   logout: publicProcedure.mutation(async ({ ctx }) => {
-    ctx.session.destroy()
+    await ctx.session.destroy()
   }),
 })
