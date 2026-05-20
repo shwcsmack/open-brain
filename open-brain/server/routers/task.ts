@@ -123,5 +123,23 @@ export const taskRouter = router({
           })
         }
       })
+
+      // Sync FTS after transaction completes
+      for (const t of toDelete) {
+        await deleteTaskFromFts(t.id)
+      }
+      for (const t of toUpdate) {
+        const existingTask = existing.find(e => e.title === t.title)!
+        await syncTaskToFts(existingTask.id, existingTask.title)
+      }
+      if (toCreate.length > 0) {
+        const created = await prisma.task.findMany({
+          where: { noteId: input.noteId, deletedAt: null, title: { in: toCreate.map(t => t.title) } },
+          select: { id: true, title: true },
+        })
+        for (const task of created) {
+          await syncTaskToFts(task.id, task.title)
+        }
+      }
     }),
 })
