@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Input } from '@/components/ui/input'
 import { useDebounce } from '@/lib/hooks/useDebounce'
 import { formatDistanceToNow } from 'date-fns'
+import { FileText, CheckSquare } from 'lucide-react'
 
 export function SearchModal() {
   const [open, setOpen] = useState(false)
@@ -74,6 +75,9 @@ export function SearchModal() {
           {query.trim() && results?.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">No results for &quot;{query}&quot;</p>
           )}
+          {!query.trim() && results && results.length > 0 && (
+            <p className="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent notes</p>
+          )}
           {results?.map((r, i) => (
             <button
               key={r.id}
@@ -82,7 +86,7 @@ export function SearchModal() {
               onMouseEnter={() => setSelectedIdx(i)}
             >
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground uppercase shrink-0">{r.type}</span>
+                {r.type === 'note' ? <FileText className="h-4 w-4 shrink-0 text-muted-foreground" /> : <CheckSquare className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 <span className="font-medium text-sm truncate">{r.title}</span>
                 {r.updatedAt && (
                   <span className="text-xs text-muted-foreground ml-auto shrink-0">

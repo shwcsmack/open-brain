@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
-import { searchContent } from '@/lib/search'
+import { searchNotes } from '@/lib/search'
 import { prisma } from '@/lib/prisma'
 
 export const searchRouter = router({
@@ -15,6 +15,6 @@ export const searchRouter = router({
         })
         return recent.map(n => ({ ...n, type: 'note' as const, snippet: '' }))
       }
-      return searchContent(input.q)
+      return searchNotes(input.q)
     }),
 })

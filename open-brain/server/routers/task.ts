@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
+import { syncTaskToFts, deleteTaskFromFts } from '@/lib/search'
 
 const TaskStatusEnum = z.enum(['TODO', 'IN_PROGRESS', 'DONE'])
 const PriorityEnum = z.enum(['LOW', 'MEDIUM', 'HIGH'])
@@ -37,14 +38,16 @@ export const taskRouter = router({
         noteId: z.string().optional(),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       const { dueDate, ...rest } = input
-      return prisma.task.create({
+      const task = await prisma.task.create({
         data: {
           ...rest,
           ...(dueDate ? { dueDate: new Date(dueDate) } : {}),
         },
       })
+      await syncTaskToFts(task.id, task.title)
+      return task
     }),
 
   update: protectedProcedure
@@ -57,9 +60,9 @@ export const taskRouter = router({
         dueDate: z.string().nullable().optional(),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       const { id, dueDate, ...rest } = input
-      return prisma.task.update({
+      const updated = await prisma.task.update({
         where: { id },
         data: {
           ...rest,
@@ -68,13 +71,18 @@ export const taskRouter = router({
             : {}),
         },
       })
+      await syncTaskToFts(updated.id, updated.title)
+      return updated
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) =>
-      prisma.task.update({ where: { id: input.id }, data: { deletedAt: new Date() } })
-    ),
+    .mutation(async ({ input }) => {
+      const { id } = input
+      const deleted = await prisma.task.update({ where: { id }, data: { deletedAt: new Date() } })
+      await deleteTaskFromFts(id)
+      return deleted
+    }),
 
   syncFromNote: protectedProcedure
     .input(
