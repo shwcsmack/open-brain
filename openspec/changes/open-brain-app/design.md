@@ -13,6 +13,7 @@ This change formalizes the project as **open-brain** and extends the prior `brow
 - Task management integrated with notes (inline tasks + standalone task view)
 - Full-text search across notes and tasks
 - Bidirectional flashcard system: cards created from notes or standalone, reviewed via FSRS-scheduled sessions
+- Periodic notes: auto-created daily, weekly, monthly, quarterly, and yearly note templates accessible via a calendar-style navigator
 - Docker Compose deployment with SQLite default; Postgres optional via env var
 
 **Non-Goals:**
@@ -138,7 +139,25 @@ const { card: nextCard } = f.next(currentCard, now, rating)
 
 **Rationale:** The hub gives an overview before committing; the full-screen session minimizes distraction during review. Session queue lives in React state after initial fetch — no per-card refetches. "Again" cards re-enter the end of the queue (capped at 3 requeues per session).
 
-### D13: Flashcard data model
+### D13: Periodic notes (daily / weekly / monthly / quarterly / yearly)
+
+**Choice:** First-class periodic note templates accessible via a calendar-style navigator in the sidebar. Each period type has its own template (configurable). Opening a period note for a date auto-creates the note if it doesn't exist, using the template.
+
+**Supported periods:** Day, Week, ISO week, Month, Quarter, Year.
+
+**Rationale:** Periodic notes are a core journaling and review workflow in PKM tools like Obsidian and Capacities. Supporting all five granularities in v1 gives users a complete journaling stack without needing a plugin.
+
+**Implementation approach:**
+- `Note` model gains a `periodType: PeriodType?` enum field (`DAY | WEEK | MONTH | QUARTER | YEAR`) and a `periodKey: String?` (e.g., `"2026-05-19"`, `"2026-W21"`, `"2026-05"`, `"2026-Q2"`, `"2026"`) with a unique constraint on `(periodType, periodKey)`.
+- A `PeriodicTemplate` model stores user-defined Tiptap JSON templates per period type.
+- tRPC procedure `note.getOrCreatePeriodic({ periodType, periodKey })` — idempotent, creates from template if absent.
+- Calendar navigator component in sidebar: shows current day/week/month; clicking a date opens the day note; tabs switch between granularities.
+- Wikilinks like `[[daily/2026-05-19]]` resolve to the correct periodic note.
+
+**Alternatives considered:**
+- *Plugin/extension only (v2)* — rejected; periodic notes are a fundamental workflow, not an advanced feature
+
+### D14: Flashcard data model
 
 Three new Prisma models alongside existing `Note`, `NoteLink`, `Task`, `User`:
 
@@ -218,4 +237,3 @@ Greenfield project — no existing data to migrate.
 - Should tags on notes be free-form strings or a normalized `Tag` table? (Free-form is simpler; normalized enables rename propagation — defer to specs phase.)
 - Deck auto-creation from note tags: if a note has tag `biology`, should a `biology` deck be offered automatically? (Nice to have — not blocking v1.)
 - Export formats: Markdown zip export is obvious; Obsidian vault format compatibility? (Nice to have — not blocking v1.)
-- Daily notes / journal feature: v1 or v2? (Likely v2.)
