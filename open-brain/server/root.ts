@@ -2,6 +2,7 @@ import { router } from './trpc'
 import { authRouter } from './routers/auth'
 import { noteRouter } from './routers/note'
 import { noteLinkRouter } from './routers/noteLink'
+import { graphRouter } from './routers/graph'
 
 // Stub routers — will be replaced in subsequent tasks
 const stubRouter = router({})
@@ -11,7 +12,7 @@ export const appRouter = router({
   note: noteRouter,
   noteLink: noteLinkRouter,
   task: stubRouter,
-  graph: stubRouter,
+  graph: graphRouter,
   search: stubRouter,
   flashcard: stubRouter,
   deck: stubRouter,

@@ -1,6 +1,7 @@
 'use client'
 import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { NoteEditor } from '@/components/editor/NoteEditor'
 import { TagInput } from '@/components/notes/TagInput'
@@ -48,6 +49,9 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
             }
           }}
         />
+        <Link href={`/graph?focus=${note.id}`}>
+          <Button variant="outline" size="sm">Graph</Button>
+        </Link>
         <AlertDialog>
           <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
             Delete
