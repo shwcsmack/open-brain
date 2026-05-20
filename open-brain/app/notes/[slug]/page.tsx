@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { NoteEditor } from '@/components/editor/NoteEditor'
 import { TagInput } from '@/components/notes/TagInput'
+import { BacklinksPanel } from '@/components/notes/BacklinksPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -69,6 +70,9 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
       />
       <div className="mt-4">
         <NoteEditor noteId={note.id} initialContent={note.body} />
+      </div>
+      <div className="mt-8 border-t">
+        <BacklinksPanel noteId={note.id} />
       </div>
     </div>
   )

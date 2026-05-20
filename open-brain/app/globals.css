@@ -129,3 +129,21 @@
     @apply font-sans;
   }
 }
+
+.wikilink {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.wikilink-resolved {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary) / 0.3);
+}
+.wikilink-unresolved {
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  border: 1px dashed hsl(var(--muted-foreground) / 0.5);
+}

@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useRef } from 'react'
 import { trpc } from '@/lib/trpc'
+import { WikilinkExtension, extractWikilinks } from './extensions/WikilinkExtension'
 
 interface Props {
   noteId: string
@@ -12,10 +13,11 @@ interface Props {
 
 export function NoteEditor({ noteId, initialContent, onSave }: Props) {
   const update = trpc.note.update.useMutation()
+  const syncLinks = trpc.noteLink.sync.useMutation()
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, WikilinkExtension],
     content: initialContent ? JSON.parse(initialContent) : '',
     onUpdate: ({ editor }) => {
       clearTimeout(saveTimer.current)
@@ -23,6 +25,8 @@ export function NoteEditor({ noteId, initialContent, onSave }: Props) {
         const body = JSON.stringify(editor.getJSON())
         update.mutate({ id: noteId, body })
         onSave?.(body)
+        const links = extractWikilinks(editor.getJSON())
+        syncLinks.mutate({ sourceNoteId: noteId, targetNoteIds: links })
       }, 1000)
     },
   })
