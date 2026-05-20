@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: file:/data/open-brain.db
+      SESSION_SECRET: ${SESSION_SECRET}
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:-}
+    volumes:
+      - db_data:/data
+
+volumes:
+  db_data:
