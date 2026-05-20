@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,14 @@ import { Input } from '@/components/ui/input'
 export default function SetupPage() {
   const [password, setPassword] = useState('')
   const router = useRouter()
+  const { data: hasUser } = trpc.auth.hasUser.useQuery()
   const setup = trpc.auth.setup.useMutation({ onSuccess: () => router.push('/') })
+
+  useEffect(() => {
+    if (hasUser) router.replace('/login')
+  }, [hasUser, router])
+
+  if (hasUser === undefined) return null // loading
 
   return (
     <div className="flex min-h-screen items-center justify-center">
