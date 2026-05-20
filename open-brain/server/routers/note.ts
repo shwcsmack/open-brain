@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
 import { uniqueSlug } from '@/lib/slug'
+import { syncNoteToFts, deleteNoteFromFts } from '@/lib/search'
 
 export const noteRouter = router({
   list: protectedProcedure.query(() =>
@@ -31,7 +32,9 @@ export const noteRouter = router({
     .input(z.object({ title: z.string().min(1) }))
     .mutation(async ({ input }) => {
       const slug = await uniqueSlug(input.title, prisma)
-      return prisma.note.create({ data: { title: input.title, slug } })
+      const note = await prisma.note.create({ data: { title: input.title, slug } })
+      void syncNoteToFts(note.id, note.title, note.body ?? '')
+      return note
     }),
 
   update: protectedProcedure
@@ -47,10 +50,15 @@ export const noteRouter = router({
       if (data.title) {
         update.slug = await uniqueSlug(data.title, prisma, id)
       }
-      return prisma.note.update({ where: { id }, data: update })
+      const updated = await prisma.note.update({ where: { id }, data: update })
+      void syncNoteToFts(updated.id, updated.title, updated.body ?? '')
+      return updated
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => prisma.note.delete({ where: { id: input.id } })),
+    .mutation(async ({ input }) => {
+      void deleteNoteFromFts(input.id)
+      return prisma.note.delete({ where: { id: input.id } })
+    }),
 })

@@ -4,6 +4,7 @@ import './globals.css'
 import { Providers } from './providers'
 import { validateEnv } from '@/lib/startup'
 import { seedInitialUserIfNeeded } from '@/lib/seed-user'
+import { SearchModal } from '@/components/search/SearchModal'
 
 validateEnv()
 
@@ -20,7 +21,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className={inter.className}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <SearchModal />
+          {children}
+        </Providers>
       </body>
     </html>
   )
