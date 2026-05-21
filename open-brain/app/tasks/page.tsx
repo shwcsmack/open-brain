@@ -94,7 +94,19 @@ export default function TasksPage() {
   )
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="flex min-h-screen">
+      <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
+        <nav className="flex flex-col gap-1">
+          <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
+          <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Tasks</Link>
+          <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
+          <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Decks</Link>
+          <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Review</Link>
+          <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Settings</Link>
+        </nav>
+      </aside>
+
+      <main className="flex-1 p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Tasks</h1>
         <div className="flex gap-2">
@@ -228,6 +240,7 @@ export default function TasksPage() {
           </div>
         </div>
       ))}
+      </main>
     </div>
   )
 }

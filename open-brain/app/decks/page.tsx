@@ -16,6 +16,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
+import { CardCreationModal } from '@/components/flashcard/CardCreationModal'
 
 export default function DecksPage() {
   const utils = trpc.useUtils()
@@ -36,6 +37,7 @@ export default function DecksPage() {
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [cardModalOpen, setCardModalOpen] = useState(false)
 
   function startEdit(id: string, currentName: string) {
     setEditingId(id)
@@ -52,7 +54,7 @@ export default function DecksPage() {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r p-4 flex flex-col gap-4">
+      <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
         <nav className="flex flex-col gap-1">
           <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
           <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Tasks</Link>
@@ -65,7 +67,10 @@ export default function DecksPage() {
 
       {/* Main content */}
       <main className="flex-1 p-6 max-w-3xl">
-        <h1 className="text-2xl font-bold mb-6">Decks</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Decks</h1>
+          <Button onClick={() => setCardModalOpen(true)} size="sm">New Card</Button>
+        </div>
 
         {/* Create new deck */}
         <div className="flex gap-2 mb-6">
@@ -150,6 +155,11 @@ export default function DecksPage() {
           ))}
         </div>
       </main>
+
+      <CardCreationModal
+        open={cardModalOpen}
+        onClose={() => setCardModalOpen(false)}
+      />
     </div>
   )
 }

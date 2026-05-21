@@ -1,5 +1,6 @@
 'use client'
 import { useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { trpc } from '@/lib/trpc'
@@ -74,7 +75,18 @@ function TemplateEditor({ periodType }: { periodType: PeriodType }) {
 
 export default function SettingsPage() {
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="flex min-h-screen">
+      <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
+        <nav className="flex flex-col gap-1">
+          <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
+          <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Tasks</Link>
+          <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
+          <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Decks</Link>
+          <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Review</Link>
+          <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Settings</Link>
+        </nav>
+      </aside>
+      <main className="flex-1 p-6 max-w-3xl">
       <h1 className="text-2xl font-bold mb-2">Settings</h1>
       <p className="text-muted-foreground mb-8">Configure periodic note templates. These templates are used when a new periodic note is created.</p>
 
@@ -89,6 +101,7 @@ export default function SettingsPage() {
           </section>
         ))}
       </div>
+      </main>
     </div>
   )
 }

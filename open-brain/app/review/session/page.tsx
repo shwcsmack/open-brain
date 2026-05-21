@@ -160,7 +160,7 @@ export default function ReviewSessionPage() {
   if (done) {
     return (
       <div className="flex min-h-screen">
-        <aside className="w-56 shrink-0 border-r p-4 flex flex-col gap-4">
+        <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
           <nav className="flex flex-col gap-1">
             <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
             <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Tasks</Link>
@@ -209,7 +209,7 @@ export default function ReviewSessionPage() {
   if (!initialized) {
     return (
       <div className="flex min-h-screen">
-        <aside className="w-56 shrink-0 border-r p-4 flex flex-col gap-4">
+        <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
           <nav className="flex flex-col gap-1">
             <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
             <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Tasks</Link>
@@ -230,7 +230,7 @@ export default function ReviewSessionPage() {
   if (!current) {
     return (
       <div className="flex min-h-screen">
-        <aside className="w-56 shrink-0 border-r p-4 flex flex-col gap-4">
+        <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
           <nav className="flex flex-col gap-1">
             <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
             <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Review</Link>
@@ -252,7 +252,7 @@ export default function ReviewSessionPage() {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r p-4 flex flex-col gap-4">
+      <aside className="hidden lg:flex w-56 shrink-0 border-r p-4 flex-col gap-4">
         <nav className="flex flex-col gap-1">
           <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
           <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Tasks</Link>

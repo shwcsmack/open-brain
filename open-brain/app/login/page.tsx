@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const router = useRouter()
   const login = trpc.auth.login.useMutation({ onSuccess: () => router.push('/') })
+  const { data: hasUser } = trpc.auth.hasUser.useQuery()
 
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -25,6 +27,14 @@ export default function LoginPage() {
           {login.isPending ? 'Signing in...' : 'Sign in'}
         </Button>
         {login.error && <p className="text-destructive text-sm">Invalid password</p>}
+        {hasUser === false && (
+          <p className="text-sm text-muted-foreground text-center">
+            First time?{' '}
+            <Link href="/setup" className="underline hover:text-foreground">
+              Set up your account →
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   )
