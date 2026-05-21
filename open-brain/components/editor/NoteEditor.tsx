@@ -60,6 +60,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEdito
   const editorRef = useRef<ReturnType<typeof useEditor>>(null)
   const suggestionStateRef = useRef<WikilinkSuggestionState | null>(null)
   const suggestionRangeRef = useRef<Range | null>(null)
+  const pendingAliasRef = useRef<string | null>(null)
 
   const [cardModalOpen, setCardModalOpen] = useState(false)
   const [cardModalFront, setCardModalFront] = useState('')
@@ -106,7 +107,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEdito
     return fuseRef.current.search(trimmed, { limit: 10 }).map((result) => result.item)
   }
 
-  function insertWikilink(note: WikilinkAutocompleteNote, range: Range | null = suggestionRangeRef.current) {
+  function insertWikilink(
+    note: WikilinkAutocompleteNote,
+    range: Range | null = suggestionRangeRef.current,
+    displayText: string | null = null
+  ) {
     const ed = editorRef.current
     if (!ed || !range) return
 
@@ -119,10 +124,12 @@ export const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEdito
           noteSlug: note.slug,
           title: note.title,
           resolved: true,
+          displayText: displayText ?? pendingAliasRef.current,
         },
       })
       .run()
 
+    pendingAliasRef.current = null
     suggestionRangeRef.current = null
     updateSuggestionState(null)
   }
@@ -227,6 +234,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEdito
     const handleKeyDown = (e: KeyboardEvent) => {
       const currentSuggestion = suggestionStateRef.current
 
+      if (e.key === '[' && editor?.isFocused) {
+        const { from, to } = editor.state.selection
+        if (from !== to) {
+          pendingAliasRef.current = editor.state.doc.textBetween(from, to)
+        }
+      }
+
       if (editor?.isFocused && currentSuggestion) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
@@ -259,10 +273,36 @@ export const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEdito
 
         if (e.key === 'Escape' || e.key === 'Esc') {
           e.preventDefault()
+          pendingAliasRef.current = null
           suggestionRangeRef.current = null
           updateSuggestionState(null)
           return
         }
+      }
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'k') {
+        const ed = editorRef.current
+        if (!ed?.isFocused) return
+        const { from, to } = ed.state.selection
+        if (from === to) return
+        e.preventDefault()
+        const selectedText = ed.state.doc.textBetween(from, to)
+        pendingAliasRef.current = selectedText
+        const range = { from, to }
+        suggestionRangeRef.current = range
+        let coords: { left: number; top: number; right: number; bottom: number }
+        try {
+          coords = ed.view.coordsAtPos(from)
+        } catch {
+          return
+        }
+        updateSuggestionState({
+          rect: new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top),
+          items: searchNotes(selectedText),
+          range,
+          selectedIndex: 0,
+        })
+        return
       }
 
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {

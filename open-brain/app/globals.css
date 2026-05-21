@@ -147,6 +147,10 @@
   color: hsl(var(--muted-foreground));
   border: 1px dashed hsl(var(--muted-foreground) / 0.5);
 }
+.wikilink-aliased {
+  font-style: italic;
+  opacity: 0.85;
+}
 
 /* Task list checkboxes in Tiptap */
 ul[data-type="taskList"] {

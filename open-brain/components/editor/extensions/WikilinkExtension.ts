@@ -11,6 +11,37 @@ function parsePeriodicWikilink(title: string): { periodType: PeriodType; periodK
   return null
 }
 
+export const WIKILINK_INPUT_RULE_PATTERN = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]$/
+
+export function wikilinkAttrsFromBracketMatch(match: RegExpMatchArray): {
+  title: string
+  displayText: string | null
+  resolved: false
+} {
+  return {
+    title: match[1],
+    displayText: match[2] ?? null,
+    resolved: false,
+  }
+}
+
+export function getWikilinkDisplay(attrs: {
+  displayText: string | null
+  title: string
+  resolved: boolean
+}): { text: string; className: string; tooltip: string | null } {
+  const isAliased = !!attrs.displayText
+  return {
+    text: isAliased ? `~${attrs.displayText}` : `[[${attrs.title}]]`,
+    className: [
+      'wikilink',
+      attrs.resolved ? 'wikilink-resolved' : 'wikilink-unresolved',
+      ...(isAliased ? ['wikilink-aliased'] : []),
+    ].join(' '),
+    tooltip: isAliased ? `→ ${attrs.title}` : null,
+  }
+}
+
 export const WikilinkExtension = Node.create({
   name: 'wikilink',
   group: 'inline',
@@ -24,6 +55,7 @@ export const WikilinkExtension = Node.create({
       noteSlug: { default: null },
       title: { default: '' },
       resolved: { default: false },
+      displayText: { default: null },
     }
   },
 
@@ -32,29 +64,33 @@ export const WikilinkExtension = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const { text, className, tooltip } = getWikilinkDisplay({
+      displayText: HTMLAttributes.displayText ?? null,
+      title: HTMLAttributes.title,
+      resolved: HTMLAttributes.resolved,
+    })
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
         'data-wikilink': '',
-        class: HTMLAttributes.resolved
-          ? 'wikilink wikilink-resolved'
-          : 'wikilink wikilink-unresolved',
+        class: className,
+        ...(tooltip ? { title: tooltip } : {}),
       }),
-      `[[${HTMLAttributes.title}]]`,
+      text,
     ]
   },
 
   addInputRules() {
     return [
       new InputRule({
-        find: /\[\[([^\]]+)\]\]$/,
+        find: WIKILINK_INPUT_RULE_PATTERN,
         handler: ({ state, range, match }) => {
-          const title = match[1]
+          const attrs = wikilinkAttrsFromBracketMatch(match)
           const { tr } = state
           tr.replaceWith(
             range.from,
             range.to,
-            state.schema.nodes.wikilink.create({ title, resolved: false })
+            state.schema.nodes.wikilink.create(attrs)
           )
         },
       }),
@@ -62,13 +98,17 @@ export const WikilinkExtension = Node.create({
   },
 
   addNodeView() {
-    return ({ node, HTMLAttributes }) => {
+    return ({ node }: { node: { attrs: { displayText: string | null; title: string; resolved: boolean; noteSlug: string | null } } }) => {
       const dom = document.createElement('span')
       dom.setAttribute('data-wikilink', '')
-      dom.className = node.attrs.resolved
-        ? 'wikilink wikilink-resolved'
-        : 'wikilink wikilink-unresolved'
-      dom.textContent = `[[${node.attrs.title}]]`
+      const { text, className, tooltip } = getWikilinkDisplay({
+        displayText: node.attrs.displayText ?? null,
+        title: node.attrs.title,
+        resolved: node.attrs.resolved,
+      })
+      dom.className = className
+      dom.textContent = text
+      if (tooltip) dom.title = tooltip
       dom.style.cursor = 'pointer'
 
       dom.addEventListener('click', async () => {
