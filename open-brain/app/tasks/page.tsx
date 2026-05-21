@@ -56,15 +56,27 @@ export default function TasksPage() {
   })
   const update = trpc.task.update.useMutation({
     onMutate: async (vars) => {
-      await utils.task.list.cancel()
-      const prev = utils.task.list.getData()
-      utils.task.list.setData(undefined, old =>
-        old?.map(t => t.id === vars.id ? { ...t, ...(vars.status !== undefined ? { status: vars.status } : {}), ...(vars.priority !== undefined ? { priority: vars.priority } : {}) } : t)
-      )
-      return { prev }
+      const queryInput = (statusFilter || priorityFilter)
+        ? { status: statusFilter || undefined, priority: priorityFilter || undefined }
+        : undefined
+      await utils.task.list.cancel(queryInput)
+      const prev = utils.task.list.getData(queryInput)
+      utils.task.list.setData(queryInput, old => {
+        if (!old) return old
+        const updated = old.map(t =>
+          t.id === vars.id
+            ? { ...t, ...(vars.status !== undefined ? { status: vars.status } : {}), ...(vars.priority !== undefined ? { priority: vars.priority } : {}) }
+            : t
+        )
+        if (queryInput?.status && vars.status && vars.status !== queryInput.status) {
+          return updated.filter(t => t.id !== vars.id)
+        }
+        return updated
+      })
+      return { prev, queryInput }
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) utils.task.list.setData(undefined, ctx.prev)
+      if (ctx?.prev !== undefined) utils.task.list.setData(ctx.queryInput, ctx.prev)
       toast.error('Failed to update task')
     },
     onSettled: () => utils.task.list.invalidate(),

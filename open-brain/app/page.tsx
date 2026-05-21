@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CalendarNavigator } from '@/components/calendar/CalendarNavigator'
 import { formatDistanceToNow } from 'date-fns'
+import { X } from 'lucide-react'
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
@@ -57,7 +58,17 @@ export default function NotesPage() {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:relative lg:translate-x-0 lg:z-auto
         `}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation"
       >
+        <button
+          className="lg:hidden absolute top-4 right-4 p-1 text-muted-foreground hover:text-foreground"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close navigation"
+        >
+          <X className="h-5 w-5" />
+        </button>
         <NavLinks onNavigate={closeSidebar} />
         <div className="border-t pt-4">
           <CalendarNavigator />

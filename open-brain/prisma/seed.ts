@@ -10,6 +10,7 @@ async function main() {
   const adapter = new PrismaBetterSqlite3({ url: databaseUrl })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const prisma = new PrismaClient({ adapter } as any)
+  try {
 
   // 1. User
   const hash = await bcrypt.hash('password123', 12)
@@ -213,10 +214,11 @@ async function main() {
       body: JSON.stringify({
         type: 'doc',
         content: [
-          {
-            type: 'paragraph',
-            content: [{ type: 'text', text: `## ${today}\n\n- Morning intentions:\n- Evening reflection:` }],
-          },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: `Daily Note — ${today}` }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Morning intentions:' }] },
+          { type: 'bulletList', content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }] },
+          ]},
         ],
       }),
       tags: '["daily"]',
@@ -227,10 +229,11 @@ async function main() {
   console.log('Created daily note:', periodicNote.id)
 
   console.log('\nSeed complete!')
-  await prisma.$disconnect()
+  } finally {
+    await prisma.$disconnect()
+  }
 }
 
-main().catch(err => {
-  console.error(err)
-  process.exit(1)
-})
+main()
+  .catch(console.error)
+  .finally(() => process.exit(0))
