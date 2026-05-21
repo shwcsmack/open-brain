@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
 import {
   Dialog,
@@ -38,6 +39,7 @@ export function CardCreationModal({
       }
       onClose()
     },
+    onError: () => toast.error('Failed to create flashcard'),
   })
 
   // Sync front when initialFront prop changes (e.g. new selection)

@@ -2,6 +2,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
 import { WikilinkExtension, extractWikilinks } from './extensions/WikilinkExtension'
 import { TaskList, TaskItem, extractTaskItems } from './extensions/TaskItemExtension'
@@ -15,7 +16,9 @@ interface Props {
 }
 
 export function NoteEditor({ noteId, initialContent, onSave }: Props) {
-  const update = trpc.note.update.useMutation()
+  const update = trpc.note.update.useMutation({
+    onError: () => toast.error('Failed to save note'),
+  })
   const syncLinks = trpc.noteLink.sync.useMutation()
   const syncTasks = trpc.task.syncFromNote.useMutation()
   const syncCloze = trpc.flashcard.syncCloze.useMutation()

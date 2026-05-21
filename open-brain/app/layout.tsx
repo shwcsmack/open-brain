@@ -5,6 +5,8 @@ import { Providers } from './providers'
 import { validateEnv } from '@/lib/startup'
 import { seedInitialUserIfNeeded } from '@/lib/seed-user'
 import { SearchModal } from '@/components/search/SearchModal'
+import { Toaster } from '@/components/ui/sonner'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 validateEnv()
 
@@ -23,7 +25,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={inter.className}>
         <Providers>
           <SearchModal />
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
+          <Toaster />
         </Providers>
       </body>
     </html>

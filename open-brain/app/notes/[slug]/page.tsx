@@ -2,6 +2,7 @@
 import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
 import { NoteEditor } from '@/components/editor/NoteEditor'
 import { TagInput } from '@/components/notes/TagInput'
@@ -9,6 +10,7 @@ import { BacklinksPanel } from '@/components/notes/BacklinksPanel'
 import { CardsPanel } from '@/components/flashcard/CardsPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,15 +27,32 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
   const { slug } = use(params)
   const router = useRouter()
   const utils = trpc.useUtils()
-  const { data: note } = trpc.note.getBySlug.useQuery({ slug })
+  const { data: note, isLoading } = trpc.note.getBySlug.useQuery({ slug })
   const update = trpc.note.update.useMutation({
     onSuccess: () => utils.note.list.invalidate(),
+    onError: () => toast.error('Failed to save note'),
   })
   const del = trpc.note.delete.useMutation({
     onSuccess: () => router.push('/'),
   })
 
-  if (!note) return <div className="p-6 text-muted-foreground">Loading...</div>
+  if (isLoading) return (
+    <div className="flex min-h-screen">
+      <div className="flex-1 p-6 max-w-3xl">
+        <Skeleton className="h-10 w-3/4 mb-4" />
+        <Skeleton className="h-6 w-1/4 mb-6" />
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-4/5" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      </div>
+    </div>
+  )
+
+  if (!note) return <div className="p-6 text-muted-foreground">Note not found.</div>
 
   let tags: string[] = []
   try { tags = JSON.parse(note.tags) } catch { /* noop */ }

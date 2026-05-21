@@ -1,9 +1,11 @@
 'use client'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import {
@@ -39,19 +41,33 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<Priority | undefined>()
   const utils = trpc.useUtils()
 
-  const { data: tasks } = trpc.task.list.useQuery(
+  const { data: tasks, isLoading } = trpc.task.list.useQuery(
     statusFilter || priorityFilter
       ? { status: statusFilter, priority: priorityFilter }
-      : undefined
+      : undefined,
+    { refetchInterval: 30000 }
   )
   const create = trpc.task.create.useMutation({
     onSuccess: () => {
       utils.task.list.invalidate()
       setNewTitle('')
     },
+    onError: () => toast.error('Failed to create task'),
   })
   const update = trpc.task.update.useMutation({
-    onSuccess: () => utils.task.list.invalidate(),
+    onMutate: async (vars) => {
+      await utils.task.list.cancel()
+      const prev = utils.task.list.getData()
+      utils.task.list.setData(undefined, old =>
+        old?.map(t => t.id === vars.id ? { ...t, ...(vars.status !== undefined ? { status: vars.status } : {}), ...(vars.priority !== undefined ? { priority: vars.priority } : {}) } : t)
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) utils.task.list.setData(undefined, ctx.prev)
+      toast.error('Failed to update task')
+    },
+    onSettled: () => utils.task.list.invalidate(),
   })
   const del = trpc.task.delete.useMutation({
     onSuccess: () => utils.task.list.invalidate(),
@@ -115,7 +131,15 @@ export default function TasksPage() {
         </Button>
       </div>
 
-      {STATUS_ORDER.map(status => (
+      {isLoading && (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      )}
+
+      {!isLoading && STATUS_ORDER.map(status => (
         <div key={status} className="mb-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             {STATUS_LABELS[status]} ({grouped[status].length})
