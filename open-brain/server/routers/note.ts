@@ -8,7 +8,7 @@ export const noteRouter = router({
   list: protectedProcedure.query(() =>
     prisma.note.findMany({
       orderBy: { updatedAt: 'desc' },
-      select: { id: true, title: true, slug: true, body: true, tags: true, updatedAt: true },
+      select: { id: true, title: true, slug: true, body: true, tags: true, updatedAt: true, periodType: true, periodKey: true },
     })
   ),
 
@@ -60,5 +60,49 @@ export const noteRouter = router({
     .mutation(async ({ input }) => {
       void deleteNoteFromFts(input.id)
       return prisma.note.delete({ where: { id: input.id } })
+    }),
+
+  getOrCreatePeriodic: protectedProcedure
+    .input(z.object({
+      periodType: z.enum(['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR']),
+      periodKey: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.note.findUnique({
+        where: { periodType_periodKey: { periodType: input.periodType, periodKey: input.periodKey } },
+      })
+      if (existing) return existing
+
+      // Get template
+      const template = await prisma.periodicTemplate.findUnique({
+        where: { periodType: input.periodType },
+      })
+
+      // Build title from periodType + periodKey
+      const titleMap: Record<string, string> = {
+        DAY: `Daily Note — ${input.periodKey}`,
+        WEEK: `Weekly Note — ${input.periodKey}`,
+        MONTH: `Monthly Note — ${input.periodKey}`,
+        QUARTER: `Quarterly Note — ${input.periodKey}`,
+        YEAR: `Yearly Note — ${input.periodKey}`,
+      }
+      const title = titleMap[input.periodType]
+      const slug = await uniqueSlug(title, prisma)
+      const body = template?.content && template.content !== '{}'
+        ? template.content
+        : JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
+
+      const note = await prisma.note.create({
+        data: {
+          title,
+          slug,
+          body,
+          tags: '[]',
+          periodType: input.periodType,
+          periodKey: input.periodKey,
+        },
+      })
+      void syncNoteToFts(note.id, note.title, body)
+      return note
     }),
 })

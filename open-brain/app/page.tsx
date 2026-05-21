@@ -1,9 +1,11 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { CalendarNavigator } from '@/components/calendar/CalendarNavigator'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function NotesPage() {
@@ -21,7 +23,22 @@ export default function NotesPage() {
     : notes
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <aside className="w-56 shrink-0 border-r p-4 flex flex-col gap-4">
+        <nav className="flex flex-col gap-1">
+          <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
+          <Link href="/tasks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Tasks</Link>
+          <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
+          <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Settings</Link>
+        </nav>
+        <div className="border-t pt-4">
+          <CalendarNavigator />
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Notes</h1>
         <Button onClick={() => create.mutate({ title: 'Untitled' })} disabled={create.isPending}>
@@ -78,6 +95,7 @@ export default function NotesPage() {
           <p className="text-muted-foreground text-sm">No notes yet. Create one above.</p>
         )}
       </div>
+      </main>
     </div>
   )
 }
