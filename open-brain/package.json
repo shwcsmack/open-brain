@@ -40,6 +40,7 @@
     "clsx": "^2.1.1",
     "d3-force": "^3.0.0",
     "date-fns": "^4.2.1",
+    "fuse.js": "^7.3.0",
     "iron-session": "^8.0.4",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

@@ -1,16 +1,17 @@
 'use client'
-import { use, useState } from 'react'
+import { use, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
-import { NoteEditor } from '@/components/editor/NoteEditor'
+import { NoteEditor, NoteEditorHandle } from '@/components/editor/NoteEditor'
 import { TagInput } from '@/components/notes/TagInput'
 import { BacklinksPanel } from '@/components/notes/BacklinksPanel'
 import { CardsPanel } from '@/components/flashcard/CardsPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ChevronLeft } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,14 +28,29 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
   const { slug } = use(params)
   const router = useRouter()
   const utils = trpc.useUtils()
+  const editorRef = useRef<NoteEditorHandle>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
   const { data: note, isLoading } = trpc.note.getBySlug.useQuery({ slug })
+  const { data: notes = [] } = trpc.note.list.useQuery(undefined, { refetchInterval: 30000 })
   const update = trpc.note.update.useMutation({
-    onSuccess: () => utils.note.list.invalidate(),
+    onSuccess: () => {
+      utils.note.list.invalidate()
+      toast.success('Note saved')
+    },
     onError: () => toast.error('Failed to save note'),
   })
   const del = trpc.note.delete.useMutation({
     onSuccess: () => router.push('/'),
   })
+
+  function handleSave() {
+    if (!note) return
+    const currentTitle = titleRef.current?.value
+    if (currentTitle && currentTitle !== note.title) {
+      update.mutate({ id: note.id, title: currentTitle })
+    }
+    editorRef.current?.save()
+  }
 
   if (isLoading) return (
     <div className="flex min-h-screen">
@@ -61,16 +77,23 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
     <div className="flex min-h-screen">
       {/* Main content */}
       <div className="flex-1 p-6 max-w-3xl">
+        <div className="flex items-center gap-2 mb-2">
+          <Link href="/">
+            <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+              <ChevronLeft className="h-4 w-4" />
+              Notes
+            </Button>
+          </Link>
+        </div>
         <div className="flex items-center gap-2 mb-4">
           <Input
+            ref={titleRef}
             className="text-2xl font-bold border-0 shadow-none px-0 h-auto flex-1"
             defaultValue={note.title}
-            onBlur={e => {
-              if (e.target.value !== note.title) {
-                update.mutate({ id: note.id, title: e.target.value })
-              }
-            }}
           />
+          <Button size="sm" onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? 'Saving…' : 'Save'}
+          </Button>
           <Link href={`/graph?focus=${note.id}`}>
             <Button variant="outline" size="sm">Graph</Button>
           </Link>
@@ -95,7 +118,12 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
           onChange={t => update.mutate({ id: note.id, tags: JSON.stringify(t) })}
         />
         <div className="mt-4">
-          <NoteEditor noteId={note.id} initialContent={note.body} />
+          <NoteEditor
+            ref={editorRef}
+            noteId={note.id}
+            initialContent={note.body}
+            notes={notes.map(({ id, title, slug: noteSlug, tags }) => ({ id, title, slug: noteSlug, tags }))}
+          />
         </div>
       </div>
 

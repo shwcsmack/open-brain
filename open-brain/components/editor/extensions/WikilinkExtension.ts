@@ -21,6 +21,7 @@ export const WikilinkExtension = Node.create({
   addAttributes() {
     return {
       noteId: { default: null },
+      noteSlug: { default: null },
       title: { default: '' },
       resolved: { default: false },
     }
@@ -85,9 +86,8 @@ export const WikilinkExtension = Node.create({
           } catch (err) {
             console.error('Failed to open periodic note', err)
           }
-        } else if (node.attrs.noteId) {
-          // Navigate to regular note by looking it up
-          window.location.href = `/notes/${node.attrs.noteId}`
+        } else if (node.attrs.noteSlug) {
+          window.location.href = `/notes/${node.attrs.noteSlug}`
         }
       })
 
