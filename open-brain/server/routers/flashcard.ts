@@ -104,60 +104,62 @@ export const flashcardRouter = router({
       )
       const incomingIndices = new Set(input.items.map((i) => i.clozeIndex))
 
-      const ops: Promise<unknown>[] = []
+      await prisma.$transaction(async (tx) => {
+        const ops: Promise<unknown>[] = []
 
-      // Insert new or restore soft-deleted
-      for (const item of input.items) {
-        const ex = existingMap.get(item.clozeIndex)
-        if (!ex) {
-          ops.push(
-            prisma.flashcard.create({
-              data: {
-                type: 'CLOZE',
-                front: item.front,
-                clozeIndex: item.clozeIndex,
-                noteId: input.noteId,
-                stability: 0,
-                difficulty: 0,
-                due: new Date(),
-                reps: 0,
-                lapses: 0,
-                state: 'NEW',
-                lastReview: null,
-              },
-            })
-          )
-        } else if (ex.deletedAt !== null) {
-          // Restore soft-deleted
-          ops.push(
-            prisma.flashcard.update({
-              where: { id: ex.id },
-              data: { deletedAt: null, front: item.front },
-            })
-          )
-        } else if (ex.front !== item.front) {
-          // Update front text if changed
-          ops.push(
-            prisma.flashcard.update({
-              where: { id: ex.id },
-              data: { front: item.front },
-            })
-          )
+        // Insert new or restore soft-deleted
+        for (const item of input.items) {
+          const ex = existingMap.get(item.clozeIndex)
+          if (!ex) {
+            ops.push(
+              tx.flashcard.create({
+                data: {
+                  type: 'CLOZE',
+                  front: item.front,
+                  clozeIndex: item.clozeIndex,
+                  noteId: input.noteId,
+                  stability: 0,
+                  difficulty: 0,
+                  due: new Date(),
+                  reps: 0,
+                  lapses: 0,
+                  state: 'NEW',
+                  lastReview: null,
+                },
+              })
+            )
+          } else if (ex.deletedAt !== null) {
+            // Restore soft-deleted
+            ops.push(
+              tx.flashcard.update({
+                where: { id: ex.id },
+                data: { deletedAt: null, front: item.front },
+              })
+            )
+          } else if (ex.front !== item.front) {
+            // Update front text if changed
+            ops.push(
+              tx.flashcard.update({
+                where: { id: ex.id },
+                data: { front: item.front },
+              })
+            )
+          }
         }
-      }
 
-      // Soft-delete removed
-      for (const [idx, card] of existingMap) {
-        if (!incomingIndices.has(idx) && card.deletedAt === null) {
-          ops.push(
-            prisma.flashcard.update({
-              where: { id: card.id },
-              data: { deletedAt: new Date() },
-            })
-          )
+        // Soft-delete removed
+        for (const [idx, card] of existingMap) {
+          if (!incomingIndices.has(idx) && card.deletedAt === null) {
+            ops.push(
+              tx.flashcard.update({
+                where: { id: card.id },
+                data: { deletedAt: new Date() },
+              })
+            )
+          }
         }
-      }
 
-      await Promise.all(ops)
+        await Promise.all(ops)
+      })
     }),
 })

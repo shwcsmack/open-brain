@@ -57,7 +57,7 @@ export function NoteEditor({ noteId, initialContent, onSave }: Props) {
   // ⌘⇧F shortcut: open card creation modal with selected text
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'f') {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
         const selection = editor?.state.selection
         const selectedText = editor?.state.doc.textBetween(

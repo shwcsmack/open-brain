@@ -62,20 +62,16 @@ export function extractClozeItems(doc: Record<string, unknown>): ClozeItem[] {
       const content = node.content as Array<Record<string, unknown>>
       const clozeNodes = content.filter((n) => n.type === 'cloze')
       if (clozeNodes.length > 0) {
-        const front = content
-          .map((n) => {
-            if (n.type === 'text') return n.text as string
-            if (n.type === 'cloze') return '[...]'
+        clozeNodes.forEach((cn: any) => {
+          // Build front: target cloze is [...], others show their answer
+          const front = content.map((n: any) => {
+            if (n.type === 'text') return n.text
+            if (n.type === 'cloze') {
+              return n.attrs.index === cn.attrs.index ? '[...]' : n.attrs.answer
+            }
             return ''
-          })
-          .join('')
-        clozeNodes.forEach((cn) => {
-          const attrs = cn.attrs as Record<string, unknown>
-          items.push({
-            front,
-            clozeIndex: attrs.index as number,
-            answer: attrs.answer as string,
-          })
+          }).join('')
+          items.push({ front, clozeIndex: cn.attrs.index, answer: cn.attrs.answer })
         })
       }
     }

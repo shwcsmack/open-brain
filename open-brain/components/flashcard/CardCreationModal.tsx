@@ -97,8 +97,9 @@ export function CardCreationModal({
 
           {/* Front */}
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Front</label>
+            <label htmlFor="card-front" className="text-sm font-medium">Front</label>
             <Input
+              id="card-front"
               value={front}
               onChange={(e) => setFront(e.target.value)}
               placeholder="Question / prompt"
@@ -109,8 +110,9 @@ export function CardCreationModal({
           {/* Back (hidden for Cloze) */}
           {type === 'BASIC' && (
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Back</label>
+              <label htmlFor="card-back" className="text-sm font-medium">Back</label>
               <Input
+                id="card-back"
                 value={back}
                 onChange={(e) => setBack(e.target.value)}
                 placeholder="Answer"
@@ -120,8 +122,9 @@ export function CardCreationModal({
 
           {/* Deck selector */}
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Deck (optional)</label>
+            <label htmlFor="card-deck" className="text-sm font-medium">Deck (optional)</label>
             <select
+              id="card-deck"
               value={deckId}
               onChange={(e) => setDeckId(e.target.value)}
               className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
