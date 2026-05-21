@@ -20,6 +20,10 @@ const PERIOD_TYPES: PeriodType[] = ['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR']
 
 const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
 
+function safeParseJSON(s: string, fallback: string) {
+  try { return JSON.parse(s) } catch { return JSON.parse(fallback) }
+}
+
 function TemplateEditor({ periodType }: { periodType: PeriodType }) {
   const { data: template, isLoading } = trpc.periodicTemplate.get.useQuery(periodType)
   const upsert = trpc.periodicTemplate.upsert.useMutation({
@@ -35,7 +39,7 @@ function TemplateEditor({ periodType }: { periodType: PeriodType }) {
 
   const editor = useEditor({
     extensions: [StarterKit],
-    content: isLoading ? '' : (currentContent ? JSON.parse(currentContent) : JSON.parse(initialContent)),
+    content: isLoading ? '' : safeParseJSON(currentContent ?? initialContent, EMPTY_DOC),
     onUpdate: ({ editor }) => {
       setCurrentContent(JSON.stringify(editor.getJSON()))
     },

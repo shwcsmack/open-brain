@@ -30,7 +30,10 @@ export function CalendarNavigator() {
   const [tab, setTab] = useState<PeriodTab>('DAY')
   const [viewDate, setViewDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1))
   const router = useRouter()
-  const getOrCreate = trpc.note.getOrCreatePeriodic.useMutation()
+  const utils = trpc.useUtils()
+  const getOrCreate = trpc.note.getOrCreatePeriodic.useMutation({
+    onSuccess: () => utils.note.list.invalidate(),
+  })
   const { data: notes } = trpc.note.list.useQuery()
 
   const periodicNotes = notes?.filter(n => n.periodType) ?? []

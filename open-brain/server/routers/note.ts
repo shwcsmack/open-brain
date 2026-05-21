@@ -65,7 +65,10 @@ export const noteRouter = router({
   getOrCreatePeriodic: protectedProcedure
     .input(z.object({
       periodType: z.enum(['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR']),
-      periodKey: z.string(),
+      periodKey: z.string().regex(
+        /^\d{4}-\d{2}-\d{2}$|^\d{4}-W\d{2}$|^\d{4}-\d{2}$|^\d{4}-Q[1-4]$|^\d{4}$/,
+        'Invalid period key format'
+      ),
     }))
     .mutation(async ({ input }) => {
       const existing = await prisma.note.findUnique({
