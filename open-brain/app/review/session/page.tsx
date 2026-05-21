@@ -26,6 +26,25 @@ type Flashcard = {
   createdAt: Date
 }
 
+function renderFront(card: { type: string; front: string }) {
+  if (card.type === 'CLOZE') {
+    const parts = card.front.split('[...]')
+    return (
+      <span>
+        {parts.map((part, i) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && (
+              <span className="inline-block min-w-[60px] border-b-2 border-primary mx-1 font-bold text-primary">[...]</span>
+            )}
+          </span>
+        ))}
+      </span>
+    )
+  }
+  return <span>{card.front}</span>
+}
+
 function formatInterval(days: number): string {
   if (days === 0) return '<1d'
   if (days < 30) return `${days}d`
@@ -39,6 +58,7 @@ export default function ReviewSessionPage() {
   const deckId = searchParams.get('deckId') ?? undefined
 
   const { data: dueCards } = trpc.review.listDue.useQuery({ deckId })
+  const { data: dueCounts } = trpc.review.dueCounts.useQuery()
   const rateMutation = trpc.review.rate.useMutation()
 
   const [queue, setQueue] = useState<Flashcard[]>([])
@@ -150,6 +170,9 @@ export default function ReviewSessionPage() {
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>Cards reviewed: <span className="text-foreground font-medium">{reviewedCount}</span></p>
               <p>Again count: <span className="text-foreground font-medium">{againCount}</span></p>
+              <div className="text-sm text-muted-foreground">
+                Next session: <span className="font-semibold">{dueCounts?.totalDue ?? 0} cards due</span>
+              </div>
             </div>
             <div className="flex gap-3 justify-center">
               <Button onClick={() => router.push('/review')} variant="outline">
@@ -258,7 +281,7 @@ export default function ReviewSessionPage() {
         <div className="w-full max-w-2xl">
           {/* Front */}
           <div className="rounded-xl border bg-card p-8 mb-4 min-h-40 flex items-center justify-center">
-            <p className="text-lg text-center leading-relaxed">{current.front}</p>
+            <p className="text-lg text-center leading-relaxed">{renderFront(current)}</p>
           </div>
 
           {/* Answer (when flipped) */}
