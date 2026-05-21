@@ -5,6 +5,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 
 type PeriodType = 'DAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR'
@@ -73,6 +74,85 @@ function TemplateEditor({ periodType }: { periodType: PeriodType }) {
   )
 }
 
+function ChangePasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  const changePassword = trpc.auth.changePassword.useMutation({
+    onSuccess: () => {
+      toast.success('Password updated')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    },
+    onError: err => toast.error(err.message),
+  })
+
+  const handleSubmit = useCallback(() => {
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match')
+      return
+    }
+    changePassword.mutate({ currentPassword, newPassword })
+  }, [currentPassword, newPassword, confirmPassword, changePassword])
+
+  const canSubmit =
+    currentPassword.length > 0 &&
+    newPassword.length >= 8 &&
+    newPassword === confirmPassword &&
+    !changePassword.isPending
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3 max-w-md">
+      <div className="space-y-1">
+        <label htmlFor="current-password" className="text-sm font-medium">Current password</label>
+        <Input
+          id="current-password"
+          type="password"
+          autoComplete="current-password"
+          value={currentPassword}
+          onChange={e => setCurrentPassword(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="new-password" className="text-sm font-medium">New password</label>
+        <Input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          placeholder="At least 8 characters"
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="confirm-password" className="text-sm font-medium">Confirm new password</label>
+        <Input
+          id="confirm-password"
+          type="password"
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={e => setConfirmPassword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && canSubmit && handleSubmit()}
+        />
+        {confirmPassword.length > 0 && newPassword !== confirmPassword && (
+          <p className="text-destructive text-xs">Passwords don&apos;t match</p>
+        )}
+      </div>
+      <div className="flex justify-end">
+        <Button onClick={handleSubmit} disabled={!canSubmit}>
+          {changePassword.isPending ? 'Updating...' : 'Change password'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   return (
     <div className="flex min-h-screen">
@@ -88,7 +168,15 @@ export default function SettingsPage() {
       </aside>
       <main className="flex-1 p-6 max-w-3xl">
       <h1 className="text-2xl font-bold mb-2">Settings</h1>
-      <p className="text-muted-foreground mb-8">Configure periodic note templates. These templates are used when a new periodic note is created.</p>
+      <p className="text-muted-foreground mb-8">Manage your account and configure periodic note templates.</p>
+
+      <section className="mb-10">
+        <h2 className="text-lg font-semibold mb-2">Account</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          Change the password used to sign in to open-brain.
+        </p>
+        <ChangePasswordForm />
+      </section>
 
       <div className="space-y-8">
         {PERIOD_TYPES.map(periodType => (
