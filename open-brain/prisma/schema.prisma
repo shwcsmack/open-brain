@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+enum PeriodType {
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+}
+
+model Note {
+  id         String      @id @default(uuid())
+  title      String
+  slug       String      @unique
+  body       String      @default("")
+  tags       String      @default("[]")
+  periodType PeriodType?
+  periodKey  String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  outLinks   NoteLink[]  @relation("SourceNote")
+  inLinks    NoteLink[]  @relation("TargetNote")
+  tasks      Task[]
+  flashcards Flashcard[]
+
+  @@unique([periodType, periodKey])
+}
+
+model NoteLink {
+  id           String @id @default(uuid())
+  sourceNoteId String
+  targetNoteId String
+  sourceNote   Note   @relation("SourceNote", fields: [sourceNoteId], references: [id], onDelete: Cascade)
+  targetNote   Note   @relation("TargetNote", fields: [targetNoteId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNoteId, targetNoteId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Task {
+  id        String     @id @default(uuid())
+  title     String
+  status    TaskStatus @default(TODO)
+  priority  Priority   @default(MEDIUM)
+  dueDate   DateTime?
+  noteId    String?
+  note      Note?      @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Deck {
+  id        String     @id @default(uuid())
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  cards     DeckCard[]
+}
+
+enum CardType {
+  BASIC
+  CLOZE
+}
+
+enum FSRSState {
+  NEW
+  LEARNING
+  REVIEW
+  RELEARNING
+}
+
+model Flashcard {
+  id         String     @id @default(uuid())
+  type       CardType
+  front      String
+  back       String?
+  clozeIndex Int?
+  noteId     String?
+  note       Note?      @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  decks      DeckCard[]
+  stability  Float      @default(0)
+  difficulty Float      @default(0)
+  due        DateTime   @default(now())
+  reps       Int        @default(0)
+  lapses     Int        @default(0)
+  state      FSRSState  @default(NEW)
+  lastReview DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime   @default(now())
+}
+
+model DeckCard {
+  deckId String
+  cardId String
+  deck   Deck      @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  card   Flashcard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([deckId, cardId])
+}
+
+model PeriodicTemplate {
+  id         String     @id @default(uuid())
+  periodType PeriodType @unique
+  content    String     @default("{}")
+  updatedAt  DateTime   @updatedAt
+}

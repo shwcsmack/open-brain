@@ -1,0 +1,37 @@
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+import { Providers } from './providers'
+import { validateEnv, applyFts5Tables } from '@/lib/startup'
+import { seedInitialUserIfNeeded } from '@/lib/seed-user'
+import { SearchModal } from '@/components/search/SearchModal'
+import { Toaster } from '@/components/ui/sonner'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+validateEnv()
+await applyFts5Tables()
+
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata: Metadata = {
+  title: 'Open Brain',
+  description: 'Self-hostable personal knowledge management',
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await seedInitialUserIfNeeded()
+
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <Providers>
+          <SearchModal />
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
+          <Toaster />
+        </Providers>
+      </body>
+    </html>
+  )
+}
