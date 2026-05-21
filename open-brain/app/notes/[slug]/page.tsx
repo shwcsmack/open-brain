@@ -6,6 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { NoteEditor } from '@/components/editor/NoteEditor'
 import { TagInput } from '@/components/notes/TagInput'
 import { BacklinksPanel } from '@/components/notes/BacklinksPanel'
+import { CardsPanel } from '@/components/flashcard/CardsPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -38,45 +39,51 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
   try { tags = JSON.parse(note.tags) } catch { /* noop */ }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <Input
-          className="text-2xl font-bold border-0 shadow-none px-0 h-auto flex-1"
-          defaultValue={note.title}
-          onBlur={e => {
-            if (e.target.value !== note.title) {
-              update.mutate({ id: note.id, title: e.target.value })
-            }
-          }}
+    <div className="flex min-h-screen">
+      {/* Main content */}
+      <div className="flex-1 p-6 max-w-3xl">
+        <div className="flex items-center gap-2 mb-4">
+          <Input
+            className="text-2xl font-bold border-0 shadow-none px-0 h-auto flex-1"
+            defaultValue={note.title}
+            onBlur={e => {
+              if (e.target.value !== note.title) {
+                update.mutate({ id: note.id, title: e.target.value })
+              }
+            }}
+          />
+          <Link href={`/graph?focus=${note.id}`}>
+            <Button variant="outline" size="sm">Graph</Button>
+          </Link>
+          <AlertDialog>
+            <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
+              Delete
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete note?</AlertDialogTitle>
+                <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => del.mutate({ id: note.id })}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+        <TagInput
+          tags={tags}
+          onChange={t => update.mutate({ id: note.id, tags: JSON.stringify(t) })}
         />
-        <Link href={`/graph?focus=${note.id}`}>
-          <Button variant="outline" size="sm">Graph</Button>
-        </Link>
-        <AlertDialog>
-          <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
-            Delete
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete note?</AlertDialogTitle>
-              <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => del.mutate({ id: note.id })}>Delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="mt-4">
+          <NoteEditor noteId={note.id} initialContent={note.body} />
+        </div>
       </div>
-      <TagInput
-        tags={tags}
-        onChange={t => update.mutate({ id: note.id, tags: JSON.stringify(t) })}
-      />
-      <div className="mt-4">
-        <NoteEditor noteId={note.id} initialContent={note.body} />
-      </div>
-      <div className="mt-8 border-t">
+
+      {/* Right sidebar */}
+      <div className="w-72 shrink-0 border-l flex flex-col divide-y">
         <BacklinksPanel noteId={note.id} />
+        <CardsPanel noteId={note.id} />
       </div>
     </div>
   )
