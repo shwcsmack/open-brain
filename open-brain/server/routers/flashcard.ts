@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
 
@@ -25,29 +26,33 @@ export const flashcardRouter = router({
     )
     .mutation(async ({ input }) => {
       const now = new Date()
-      const card = await prisma.flashcard.create({
-        data: {
-          type: input.type,
-          front: input.front,
-          back: input.back,
-          clozeIndex: input.clozeIndex,
-          noteId: input.noteId,
-          // FSRS initial values
-          stability: 0,
-          difficulty: 0,
-          due: now,
-          reps: 0,
-          lapses: 0,
-          state: 'NEW',
-          lastReview: null,
-        },
-      })
-      // Add to deck if provided
-      if (input.deckId) {
-        await prisma.deckCard.create({
-          data: { deckId: input.deckId, cardId: card.id },
+      const card = await prisma.$transaction(async (tx) => {
+        if (input.deckId) {
+          const deck = await tx.deck.findUnique({ where: { id: input.deckId } })
+          if (!deck) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Deck not found' })
+        }
+        const c = await tx.flashcard.create({
+          data: {
+            type: input.type,
+            front: input.front,
+            back: input.back,
+            clozeIndex: input.clozeIndex,
+            noteId: input.noteId,
+            // FSRS initial values
+            stability: 0,
+            difficulty: 0,
+            due: now,
+            reps: 0,
+            lapses: 0,
+            state: 'NEW',
+            lastReview: null,
+          },
         })
-      }
+        if (input.deckId) {
+          await tx.deckCard.create({ data: { deckId: input.deckId, cardId: c.id } })
+        }
+        return c
+      })
       return card
     }),
 

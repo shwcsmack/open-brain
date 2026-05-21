@@ -4,17 +4,16 @@ import { prisma } from '@/lib/prisma'
 
 export const deckRouter = router({
   list: protectedProcedure.query(async () => {
-    const decks = await prisma.deck.findMany({ orderBy: { createdAt: 'asc' } })
-    // Count non-deleted cards per deck
-    const withCounts = await Promise.all(
-      decks.map(async deck => {
-        const count = await prisma.deckCard.count({
-          where: { deckId: deck.id, card: { deletedAt: null } },
-        })
-        return { ...deck, cardCount: count }
-      })
-    )
-    return withCounts
+    const [decks, countRows] = await Promise.all([
+      prisma.deck.findMany({ orderBy: { createdAt: 'asc' } }),
+      prisma.deckCard.groupBy({
+        by: ['deckId'],
+        where: { card: { deletedAt: null } },
+        _count: { cardId: true },
+      }),
+    ])
+    const countMap = new Map(countRows.map(r => [r.deckId, r._count.cardId]))
+    return decks.map(deck => ({ ...deck, cardCount: countMap.get(deck.id) ?? 0 }))
   }),
 
   create: protectedProcedure

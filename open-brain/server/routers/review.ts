@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
 import { computeNextState, Rating, type Grade } from '@/lib/fsrs'
@@ -20,22 +21,24 @@ export const reviewRouter = router({
 
   dueCounts: protectedProcedure.query(async () => {
     const now = new Date()
-    const decks = await prisma.deck.findMany()
-    const counts = await Promise.all(
-      decks.map(async deck => {
-        const count = await prisma.deckCard.count({
-          where: {
-            deckId: deck.id,
-            card: { deletedAt: null, due: { lte: now } },
-          },
-        })
-        return { deckId: deck.id, deckName: deck.name, dueCount: count }
-      })
-    )
-    const totalDue = await prisma.flashcard.count({
-      where: { deletedAt: null, due: { lte: now } },
-    })
-    return { decks: counts, totalDue }
+    const [decks, countRows, totalDue] = await Promise.all([
+      prisma.deck.findMany({ orderBy: { createdAt: 'asc' } }),
+      prisma.deckCard.groupBy({
+        by: ['deckId'],
+        where: { card: { deletedAt: null, due: { lte: now } } },
+        _count: { cardId: true },
+      }),
+      prisma.flashcard.count({ where: { deletedAt: null, due: { lte: now } } }),
+    ])
+    const countMap = new Map(countRows.map(r => [r.deckId, r._count.cardId]))
+    return {
+      decks: decks.map(d => ({
+        deckId: d.id,
+        deckName: d.name,
+        dueCount: countMap.get(d.id) ?? 0,
+      })),
+      totalDue,
+    }
   }),
 
   rate: protectedProcedure
@@ -49,6 +52,10 @@ export const reviewRouter = router({
       const card = await prisma.flashcard.findUniqueOrThrow({
         where: { id: input.cardId },
       })
+
+      if (card.deletedAt !== null) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Card not found' })
+      }
 
       const ratingMap: Record<string, Grade> = {
         Again: Rating.Again,
