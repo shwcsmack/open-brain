@@ -135,7 +135,7 @@ const { card: nextCard } = f.next(currentCard, now, rating)
 
 ### D12: Review session — /review hub → full-screen session
 
-**Choice:** `/review` deck hub showing per-deck due counts → `/review/session?deck=[id]` full-screen flip UI.
+**Choice:** `/review` deck hub showing per-deck due counts → `/review/session?deckId=[id]` (per-deck) or `/review/session` (all due cards) full-screen flip UI.
 
 **Rationale:** The hub gives an overview before committing; the full-screen session minimizes distraction during review. Session queue lives in React state after initial fetch — no per-card refetches. "Again" cards re-enter the end of the queue (capped at 3 requeues per session).
 

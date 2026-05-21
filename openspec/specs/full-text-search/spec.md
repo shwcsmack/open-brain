@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Full-text search enables users to quickly locate notes and tasks across the entire knowledge base via a global search modal, powered by SQLite FTS5 for fast, ranked results.
+
+## Requirements
 
 ### Requirement: Full-text search index
 
@@ -66,14 +70,10 @@ The system SHALL display a "No results for '[query]'" message when the search re
 
 ---
 
-### Requirement: Dialect abstraction
+### Requirement: SQLite FTS5 search
 
-The system SHALL use SQLite FTS5 when `DATABASE_URL` points to a SQLite file and PostgreSQL `tsvector` when it points to a Postgres instance, with both paths behind a single `searchNotes(query)` helper.
+The system SHALL use SQLite FTS5 for full-text search. PostgreSQL `tsvector` support is not implemented in v1; the app is SQLite-only (see README for Postgres upgrade path notes).
 
 #### Scenario: SQLite FTS5 search
 - **WHEN** the app runs with a SQLite database
 - **THEN** `search.query` returns results using FTS5 BM25 ranking
-
-#### Scenario: Postgres tsvector search
-- **WHEN** the app runs with a Postgres database
-- **THEN** `search.query` returns results using tsvector ranking

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+The flashcard system enables users to create and review spaced-repetition flashcards directly from their notes, supporting both Basic and Cloze card types, organized into decks, and scheduled via the FSRS v5 algorithm.
+
+## Requirements
 
 ### Requirement: Basic card creation via shortcut
 
@@ -98,7 +102,7 @@ The system SHALL provide a `/review` page listing all decks with their due card 
 
 #### Scenario: All due cards option
 - **WHEN** the user clicks "All due cards"
-- **THEN** they are navigated to `/review/session?deck=all`
+- **THEN** they are navigated to `/review/session` (no deckId param; absent deckId means all cards)
 
 ---
 
@@ -116,7 +120,7 @@ The system SHALL provide a `/review/session` page presenting cards one at a time
 
 #### Scenario: Cloze sibling blanks rendered
 - **WHEN** a cloze card with `{{c1::A}} and {{c2::B}}` is shown testing clozeIndex 1
-- **THEN** the card displays "A and [...]" (tested blank shown, other blanks hidden)
+- **THEN** the card displays "[...] and B" (tested blank hidden as `[...]`, sibling blanks revealed)
 
 #### Scenario: Again cards re-queue
 - **WHEN** the user rates a card "Again"
