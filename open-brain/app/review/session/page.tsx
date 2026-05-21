@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -58,7 +58,6 @@ export default function ReviewSessionPage() {
   const deckId = searchParams.get('deckId') ?? undefined
 
   const { data: dueCards } = trpc.review.listDue.useQuery({ deckId })
-  const { data: dueCounts } = trpc.review.dueCounts.useQuery()
   const rateMutation = trpc.review.rate.useMutation()
 
   const [queue, setQueue] = useState<Flashcard[]>([])
@@ -66,10 +65,12 @@ export default function ReviewSessionPage() {
   const [flipped, setFlipped] = useState(false)
   const [reviewedCount, setReviewedCount] = useState(0)
   const [againCount, setAgainCount] = useState(0)
-  const [requeueCounts, setRequeueCounts] = useState<Map<string, number>>(new Map())
+  const requeueCountsRef = useRef<Map<string, number>>(new Map())
   const [done, setDone] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [siblings, setSiblings] = useState<Flashcard[]>([])
+
+  const { data: dueCounts } = trpc.review.dueCounts.useQuery(undefined, { enabled: done })
 
   // Initialize queue when data arrives
   useEffect(() => {
@@ -85,36 +86,41 @@ export default function ReviewSessionPage() {
   const handleRate = useCallback(
     async (ratingStr: 'Again' | 'Hard' | 'Good' | 'Easy') => {
       if (!current || !flipped) return
+      if (rateMutation.isPending) return
 
       const result = await rateMutation.mutateAsync({ cardId: current.id, rating: ratingStr })
 
       setReviewedCount(c => c + 1)
 
-      let nextQueue = queue
-
       // "Again" re-queue logic — append to end, cap at 3 per card
+      let willRequeue = false
       if (ratingStr === 'Again') {
         setAgainCount(c => c + 1)
-        const count = requeueCounts.get(current.id) ?? 0
+        const count = requeueCountsRef.current.get(current.id) ?? 0
         if (count < 3) {
-          setRequeueCounts(m => new Map(m).set(current.id, count + 1))
-          nextQueue = [...queue, current]
+          requeueCountsRef.current = new Map(requeueCountsRef.current).set(current.id, count + 1)
+          willRequeue = true
         }
       }
 
       setSiblings(result.siblings as Flashcard[])
 
-      // Advance queue
-      setQueue(nextQueue.slice(1))
-      if (nextQueue.length === 0) {
-        setDone(true)
-      } else {
-        setCurrent(nextQueue[0])
-        setFlipped(false)
-        setSiblings([])
-      }
+      // Advance queue using functional updater to avoid stale closure
+      setQueue(prevQueue => {
+        const tail = prevQueue.slice(1)
+        const nextQueue = willRequeue ? [...tail, current] : tail
+        if (nextQueue.length === 0) {
+          setDone(true)
+          setSiblings([])
+        } else {
+          setCurrent(nextQueue[0])
+          setFlipped(false)
+          setSiblings([])
+        }
+        return nextQueue
+      })
     },
-    [current, flipped, queue, requeueCounts, rateMutation]
+    [current, flipped, rateMutation]
   )
 
   // Keyboard shortcuts
@@ -126,6 +132,7 @@ export default function ReviewSessionPage() {
           setFlipped(true)
         }
       } else {
+        if (rateMutation.isPending) return
         if (e.key === '1') handleRate('Again')
         if (e.key === '2') handleRate('Hard')
         if (e.key === '3') handleRate('Good')
@@ -134,7 +141,7 @@ export default function ReviewSessionPage() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [flipped, handleRate])
+  }, [flipped, handleRate, rateMutation.isPending])
 
   // Pre-compute FSRS interval previews for current card
   const previews = current
@@ -186,7 +193,7 @@ export default function ReviewSessionPage() {
                 setFlipped(false)
                 setReviewedCount(0)
                 setAgainCount(0)
-                setRequeueCounts(new Map())
+                requeueCountsRef.current = new Map()
                 setSiblings([])
               }}>
                 Study again
@@ -240,7 +247,6 @@ export default function ReviewSessionPage() {
   }
 
   const isCloze = current.type === 'CLOZE'
-  const totalInSession = (dueCards?.length ?? 0)
   const remaining = queue.length + 1 // current + rest
 
   return (
