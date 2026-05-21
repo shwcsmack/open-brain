@@ -86,6 +86,7 @@ export const flashcardRouter = router({
           z.object({
             front: z.string(),
             clozeIndex: z.number().int(),
+            answer: z.string().optional(),
           })
         ),
       })
@@ -116,6 +117,7 @@ export const flashcardRouter = router({
                 data: {
                   type: 'CLOZE',
                   front: item.front,
+                  back: item.answer ?? null,
                   clozeIndex: item.clozeIndex,
                   noteId: input.noteId,
                   stability: 0,
@@ -133,15 +135,18 @@ export const flashcardRouter = router({
             ops.push(
               tx.flashcard.update({
                 where: { id: ex.id },
-                data: { deletedAt: null, front: item.front },
+                data: { deletedAt: null, front: item.front, back: item.answer ?? ex.back },
               })
             )
-          } else if (ex.front !== item.front) {
-            // Update front text if changed
+          } else if (ex.front !== item.front || (item.answer !== undefined && ex.back !== item.answer)) {
+            // Update front text or answer if changed
             ops.push(
               tx.flashcard.update({
                 where: { id: ex.id },
-                data: { front: item.front },
+                data: {
+                  front: item.front,
+                  ...(item.answer !== undefined ? { back: item.answer } : {}),
+                },
               })
             )
           }

@@ -48,7 +48,7 @@ export function NoteEditor({ noteId, initialContent, onSave }: Props) {
         const clozeItems = extractClozeItems(editor.getJSON() as Record<string, unknown>)
         syncCloze.mutate({
           noteId,
-          items: clozeItems.map((c) => ({ front: c.front, clozeIndex: c.clozeIndex })),
+          items: clozeItems.map((c) => ({ front: c.front, clozeIndex: c.clozeIndex, answer: c.answer })),
         })
       }, 1000)
     },
