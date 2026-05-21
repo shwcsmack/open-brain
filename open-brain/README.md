@@ -47,7 +47,7 @@ docker run --rm -v open-brain_db_data:/data -v $(pwd):/backup alpine \
 |--------------------|----------|----------------|--------------------------------------------------------------|
 | `SESSION_SECRET`   | Yes      | —              | Secret for signing iron-session cookies. Min 32 characters.  |
 | `INITIAL_PASSWORD` | No       | —              | Password for the single user, created on first boot.         |
-| `DATABASE_URL`     | No       | `file:./dev.db`| SQLite file path (`file:/data/open-brain.db`) or Postgres URL. |
+| `DATABASE_URL`     | No       | `file:./dev.db`| SQLite file path (e.g. `file:/data/open-brain.db`).            |
 | `PORT`             | No       | `3000`         | Port the container listens on.                               |
 
 > **Security**: Change `SESSION_SECRET` before deploying. Never reuse the default value.
@@ -124,24 +124,11 @@ If both objects persist, the volume mount is working correctly.
 
 ---
 
-## Postgres Upgrade Path
+## Database
 
-Open Brain defaults to SQLite for zero-config self-hosting. To switch to Postgres:
+Open Brain uses SQLite via Prisma. The default database file is at `./prisma/dev.db` (or `/data/open-brain.db` in Docker).
 
-1. **Set `DATABASE_URL`** to a Postgres connection string:
-   ```
-   DATABASE_URL=postgresql://user:password@host:5432/openbrain
-   ```
-
-2. **Re-run migrations**:
-   ```bash
-   npx prisma migrate deploy
-   ```
-   The schema uses standard types; all migrations are compatible with Postgres.
-
-3. **Full-text search** is automatically enabled via `tsvector` when Postgres is detected (see `lib/search.ts`). The SQLite FTS5 path is skipped.
-
-4. **Drop the SQLite volume** if migrating an existing installation — data must be exported manually (e.g. via JSON export or `pg_dump` equivalent).
+> **Note**: Postgres support is not currently implemented. The app uses the better-sqlite3 driver adapter for Prisma 7. Postgres support would require implementing adapter selection based on DATABASE_URL scheme.
 
 ---
 

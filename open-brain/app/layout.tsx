@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
-import { validateEnv } from '@/lib/startup'
+import { validateEnv, applyFts5Tables } from '@/lib/startup'
 import { seedInitialUserIfNeeded } from '@/lib/seed-user'
 import { SearchModal } from '@/components/search/SearchModal'
 import { Toaster } from '@/components/ui/sonner'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 validateEnv()
+await applyFts5Tables()
 
 const inter = Inter({ subsets: ['latin'] })
 
