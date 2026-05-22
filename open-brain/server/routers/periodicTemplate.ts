@@ -13,7 +13,7 @@ export const periodicTemplateRouter = router({
   upsert: protectedProcedure
     .input(z.object({
       periodType: PeriodTypeEnum,
-      content: z.string(), // Tiptap JSON stringified
+      content: z.string(),
     }))
     .mutation(async ({ input }) => {
       return prisma.periodicTemplate.upsert({

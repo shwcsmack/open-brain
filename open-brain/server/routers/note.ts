@@ -3,6 +3,7 @@ import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
 import { uniqueSlug } from '@/lib/slug'
 import { syncNoteToFts, deleteNoteFromFts } from '@/lib/search'
+import { syncNoteMarkdownDerivatives } from '@/lib/noteMarkdownSync'
 
 export const noteRouter = router({
   list: protectedProcedure.query(() =>
@@ -52,6 +53,13 @@ export const noteRouter = router({
       }
       const updated = await prisma.note.update({ where: { id }, data: update })
       void syncNoteToFts(updated.id, updated.title, updated.body ?? '')
+      // When the body changes, the note is the source of truth for wikilinks,
+      // tasks, and cloze cards — derive them here so the client doesn't have
+      // to fire three follow-up mutations (and so it can't race a stale notes
+      // list against the new body).
+      if (data.body !== undefined) {
+        await syncNoteMarkdownDerivatives(updated.id, updated.body ?? '')
+      }
       return updated
     }),
 
@@ -93,7 +101,7 @@ export const noteRouter = router({
       const slug = await uniqueSlug(title, prisma)
       const body = template?.content && template.content !== '{}'
         ? template.content
-        : JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
+        : ''
 
       const note = await prisma.note.create({
         data: {

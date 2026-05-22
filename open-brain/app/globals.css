@@ -166,3 +166,15 @@ ul[data-type="taskList"] li > label {
   flex-shrink: 0;
   user-select: none;
 }
+
+/* Always-visible cloze highlight rendered by NoteViewer */
+.cloze-highlight {
+  background-color: rgb(254 240 138);
+  color: rgb(113 63 18);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.dark .cloze-highlight {
+  background-color: rgb(113 63 18);
+  color: rgb(254 240 138);
+}

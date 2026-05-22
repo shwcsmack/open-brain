@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CalendarNavigator } from '@/components/calendar/CalendarNavigator'
+import { stripMarkdown } from '@/lib/stripMarkdown'
 import { formatDistanceToNow } from 'date-fns'
 import { X } from 'lucide-react'
 
@@ -119,10 +120,7 @@ export default function NotesPage() {
           {!isLoading && filtered?.map(note => {
             let tags: string[] = []
             try { tags = JSON.parse(note.tags) } catch { /* noop */ }
-            let excerpt = ''
-            try {
-              excerpt = JSON.parse(note.body)?.content?.[0]?.content?.[0]?.text?.slice(0, 120) ?? ''
-            } catch { /* noop */ }
+            const excerpt = stripMarkdown(note.body ?? '').slice(0, 120)
             return (
               <div
                 key={note.id}

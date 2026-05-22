@@ -1,11 +1,10 @@
 'use client'
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NoteMarkdownEditor } from '@/components/editor/NoteMarkdownEditor'
 import { toast } from 'sonner'
 
 type PeriodType = 'DAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR'
@@ -20,10 +19,24 @@ const PERIOD_LABELS: Record<PeriodType, string> = {
 
 const PERIOD_TYPES: PeriodType[] = ['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR']
 
-const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
-
-function safeParseJSON(s: string, fallback: string) {
-  try { return JSON.parse(s) } catch { return JSON.parse(fallback) }
+// Templates predating the markdown migration were persisted as TipTap JSON
+// (e.g. `{"type":"doc","content":[...]}`). Render those as empty markdown so
+// users start from a clean slate rather than seeing raw JSON in the editor.
+function normalizeTemplateBody(stored: string | null | undefined): string {
+  if (!stored) return ''
+  const trimmed = stored.trim()
+  if (trimmed === '' || trimmed === '{}') return ''
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed && typeof parsed === 'object' && parsed.type === 'doc') {
+        return ''
+      }
+    } catch {
+      // not JSON — fall through and treat as markdown
+    }
+  }
+  return stored
 }
 
 function TemplateEditor({ periodType }: { periodType: PeriodType }) {
@@ -35,22 +48,12 @@ function TemplateEditor({ periodType }: { periodType: PeriodType }) {
 
   const [currentContent, setCurrentContent] = useState<string | null>(null)
 
-  const initialContent = template?.content && template.content !== '{}'
-    ? template.content
-    : EMPTY_DOC
-
-  const editor = useEditor({
-    extensions: [StarterKit],
-    content: isLoading ? '' : safeParseJSON(currentContent ?? initialContent, EMPTY_DOC),
-    onUpdate: ({ editor }) => {
-      setCurrentContent(JSON.stringify(editor.getJSON()))
-    },
-  }, [isLoading])
+  const initialContent = normalizeTemplateBody(template?.content)
+  const value = currentContent ?? initialContent
 
   const handleSave = useCallback(() => {
-    const content = currentContent ?? initialContent
-    upsert.mutate({ periodType, content })
-  }, [currentContent, initialContent, periodType, upsert])
+    upsert.mutate({ periodType, content: value })
+  }, [periodType, upsert, value])
 
   if (isLoading) {
     return <div className="h-32 bg-muted animate-pulse rounded" />
@@ -58,8 +61,12 @@ function TemplateEditor({ periodType }: { periodType: PeriodType }) {
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      <div className="prose prose-sm max-w-none p-3 min-h-[8rem]">
-        <EditorContent editor={editor} />
+      <div className="p-3 min-h-[8rem]">
+        <NoteMarkdownEditor
+          value={value}
+          onChange={setCurrentContent}
+          placeholder="Write a markdown template…"
+        />
       </div>
       <div className="border-t px-3 py-2 flex justify-end bg-muted/30">
         <Button

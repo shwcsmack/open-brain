@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
+import { stripMarkdown } from '@/lib/stripMarkdown'
 
 export const noteLinkRouter = router({
   sync: protectedProcedure
@@ -41,10 +42,7 @@ export const noteLinkRouter = router({
         },
       })
       return links.map(l => {
-        let excerpt = ''
-        try {
-          excerpt = (JSON.parse(l.sourceNote.body)?.content?.[0]?.content?.[0]?.text ?? '').slice(0, 100)
-        } catch { /* noop */ }
+        const excerpt = stripMarkdown(l.sourceNote.body ?? '').trim().slice(0, 100)
         return {
           id: l.sourceNote.id,
           title: l.sourceNote.title,
