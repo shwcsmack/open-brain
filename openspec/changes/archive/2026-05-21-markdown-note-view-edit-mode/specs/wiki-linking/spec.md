@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Wiki-linking enables notes to reference each other via `[[Note Title]]` syntax, with autocomplete, backlink tracking, and a backlinks panel that surfaces all incoming links to a note.
-## Requirements
 ### Requirement: Wikilink node parsing
 
 The system SHALL treat `[[slug]]` and `[[slug|display text]]` as wikilink syntax within note markdown content. In view mode, the system SHALL preprocess this syntax into standard markdown links (`[display text](/notes/slug)` or `[slug](/notes/slug)`) before passing to react-markdown for rendering. Wikilinks SHALL be rendered as anchor elements; no resolved/unresolved visual distinction is applied at render time. The `displayText` portion (text after `|`) SHALL be used as the link label when present; otherwise the slug is used. The `displayText` attribute MUST NOT affect backlink resolution, which SHALL remain keyed on the slug.
@@ -17,6 +15,8 @@ The system SHALL treat `[[slug]]` and `[[slug|display text]]` as wikilink syntax
 #### Scenario: Backlink resolution ignores display text
 - **WHEN** a note contains `[[our-subaru-ascent|the car]]` and saves
 - **THEN** the backlink index records a link to slug `our-subaru-ascent` regardless of the display text
+
+---
 
 ### Requirement: Wikilink autocomplete
 
@@ -67,18 +67,3 @@ The system SHALL maintain a `NoteLink` table of `(sourceNoteId, targetNoteId)` p
 #### Scenario: Unresolved slugs not persisted
 - **WHEN** the note body contains `[[nonexistent-slug]]` and the note saves
 - **THEN** no `NoteLink` row is inserted for the unresolved slug
-
----
-
-### Requirement: Backlinks panel
-
-The system SHALL display a backlinks panel on every note detail page listing all notes that link to the current note, with each entry showing the source note's title and a 100-character context excerpt.
-
-#### Scenario: Backlinks displayed
-- **WHEN** the user views a note that two other notes link to
-- **THEN** both source notes appear in the backlinks panel with their titles and excerpts
-
-#### Scenario: Empty backlinks state
-- **WHEN** no notes link to the current note
-- **THEN** the backlinks panel shows an empty state message
-

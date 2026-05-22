@@ -44,14 +44,14 @@ The system SHALL allow the user to filter the task list by status and priority v
 
 ### Requirement: Inline task sync
 
-The system SHALL parse `- [ ]` and `- [x]` Markdown checkbox list items in the Tiptap editor as task nodes, and SHALL sync them to the `Task` table on every note save via diff (insert new, update status changes, soft-delete removed).
+The system SHALL parse `- [ ]` (unchecked) and `- [x]` (checked) GFM checkbox list items in the note markdown body as task items, and SHALL sync them to the `Task` table on every note save via diff (insert new, update status changes, soft-delete removed). Extraction SHALL use regex `/^- \[[ x]\] .+/gm`. The system SHALL NOT use TipTap task item nodes.
 
 #### Scenario: Checkbox creates task
 - **WHEN** the user types `- [ ] Buy groceries` in a note and the note saves
 - **THEN** a Task record with title "Buy groceries", status TODO, and noteId set to the current note is created
 
 #### Scenario: Checking box updates task
-- **WHEN** the user checks the `- [ ] Buy groceries` checkbox and the note saves
+- **WHEN** the user changes `- [ ] Buy groceries` to `- [x] Buy groceries` in the editor and the note saves
 - **THEN** the corresponding Task record's status is updated to DONE
 
 #### Scenario: Removing checkbox soft-deletes task

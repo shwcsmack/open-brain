@@ -1,22 +1,4 @@
-## Purpose
-
-The note editor is the core of the application, providing a rich Markdown editing experience with auto-save, tag management, and a browsable notes list.
-
-## Requirements
-
-### Requirement: Note creation
-
-The system SHALL allow the user to create a new note with a title, producing a unique URL-safe slug derived from the title.
-
-#### Scenario: Create note with title
-- **WHEN** the user submits a new note with title "My First Note"
-- **THEN** a note record is created with slug `my-first-note` and the user is navigated to the note detail page
-
-#### Scenario: Slug collision resolution
-- **WHEN** a note with slug `my-first-note` already exists and the user creates another note titled "My First Note"
-- **THEN** the new note receives slug `my-first-note-2`
-
----
+## ADDED Requirements
 
 ### Requirement: View/Edit mode toggle
 
@@ -35,6 +17,8 @@ The system SHALL provide a segmented View | Edit pill control in the note header
 - **THEN** any pending auto-save debounce is cancelled, the note is saved immediately, and the editor is replaced by the rendered markdown view
 
 ---
+
+## MODIFIED Requirements
 
 ### Requirement: Rich Markdown editing
 
@@ -69,34 +53,6 @@ The system SHALL automatically persist note content to the database 1 second aft
 #### Scenario: Mode switch cancels pending debounce
 - **WHEN** the user types in edit mode and immediately clicks the View segment before the 1-second debounce fires
 - **THEN** one immediate save is triggered and the debounce timer does not fire a second save
-
----
-
-### Requirement: Note deletion
-
-The system SHALL allow the user to delete a note after confirming via a dialog, and SHALL redirect to the notes list on success.
-
-#### Scenario: Deletion with confirmation
-- **WHEN** the user clicks delete and confirms in the dialog
-- **THEN** the note is removed from the database and the user is redirected to `/`
-
-#### Scenario: Deletion cancelled
-- **WHEN** the user clicks delete but dismisses the confirmation dialog
-- **THEN** the note is not deleted and the user remains on the note detail page
-
----
-
-### Requirement: Tag management
-
-The system SHALL allow the user to add and remove free-form tags on a note, stored as a JSON array, and SHALL render tags as removable chip badges.
-
-#### Scenario: Add tag
-- **WHEN** the user types a tag name and presses Enter or comma
-- **THEN** the tag is added to the note's tag array and rendered as a badge
-
-#### Scenario: Remove tag
-- **WHEN** the user clicks the × on a tag badge
-- **THEN** the tag is removed from the note's tag array
 
 ---
 
