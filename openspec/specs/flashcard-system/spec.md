@@ -1,9 +1,7 @@
 ## Purpose
 
 The flashcard system enables users to create and review spaced-repetition flashcards directly from their notes, supporting both Basic and Cloze card types, organized into decks, and scheduled via the FSRS v5 algorithm.
-
 ## Requirements
-
 ### Requirement: Basic card creation via shortcut
 
 The system SHALL allow the user to create a Basic flashcard by selecting text in the note editor and pressing ⌘⇧F, opening a modal pre-filled with the selection as the front, where the user adds the back and selects a deck before saving.
@@ -133,3 +131,16 @@ The system SHALL provide a `/review/session` page presenting cards one at a time
 #### Scenario: Session complete screen
 - **WHEN** all cards in the session queue have been rated (excluding again re-queues)
 - **THEN** a summary screen is shown with count of cards reviewed, again count, and estimated next session size
+
+### Requirement: Flashcard reading item provenance
+
+The system SHALL add a nullable `sourceReadingItemId` field (FK → ReadingItem) to the `Flashcard` model. When a Flashcard is created via the "Create Flashcard" terminal action in a reading session, the system SHALL set `sourceReadingItemId` to the id of the ReadingItem from which it was created.
+
+#### Scenario: Flashcard created from reading session has provenance
+- **WHEN** the user creates a flashcard from a reading session via the selection toolbar
+- **THEN** the resulting Flashcard row has `sourceReadingItemId` set to the current ReadingItem's id
+
+#### Scenario: Flashcards created outside reading session unaffected
+- **WHEN** a flashcard is created via the existing ⌘⇧F shortcut or the /decks form
+- **THEN** `sourceReadingItemId` is null and all existing behavior is unchanged
+
