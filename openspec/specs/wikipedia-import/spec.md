@@ -5,7 +5,7 @@ TBD - created by archiving change incremental-reading-module. Update Purpose aft
 ## Requirements
 ### Requirement: Wikipedia article fetch and section parsing
 
-The system SHALL provide a `reading.fetchWikipedia` tRPC query that accepts a Wikipedia article URL or title, fetches the article from `https://en.wikipedia.org/api/rest_v1/page/mobile-sections/{title}`, converts each section's HTML content to markdown server-side, and returns an array of sections with `title` and `content` fields. The procedure SHALL return a descriptive error if the article is not found or the fetch fails.
+The system SHALL provide a `reading.fetchWikipedia` tRPC query that accepts a Wikipedia article URL or title, fetches the article HTML from the MediaWiki action API (`https://en.wikipedia.org/w/api.php?action=parse&prop=text|sections|displaytitle&format=json&formatversion=2&redirects=1`), splits the returned HTML into top-level sections by their `h2` anchors, strips editorial chrome (e.g. `mw-editsection` spans, `navbox` tables), converts each section's HTML to markdown server-side, and returns an array of sections with `title` and `content` fields. The procedure SHALL send a Wikimedia-policy-compliant `User-Agent` header that identifies the application and a contact URL. The procedure SHALL return a descriptive error if the article is missing (`missingtitle`), the API reports any other error, or the fetch fails.
 
 #### Scenario: Valid Wikipedia URL returns sections
 - **WHEN** `reading.fetchWikipedia` is called with `https://en.wikipedia.org/wiki/Mitochondria`
@@ -13,11 +13,15 @@ The system SHALL provide a `reading.fetchWikipedia` tRPC query that accepts a Wi
 
 #### Scenario: Unknown article returns error
 - **WHEN** `reading.fetchWikipedia` is called with a title that does not exist on Wikipedia
-- **THEN** the procedure returns a tRPC error with a user-readable message
+- **THEN** the action API responds with `error.code = "missingtitle"` and the procedure returns a tRPC error with a user-readable message (e.g. "Wikipedia article not found: ...")
 
 #### Scenario: Network failure returns error
 - **WHEN** the Wikipedia API is unreachable during the fetch
 - **THEN** the procedure returns a tRPC error; no ReadingItem is created
+
+#### Scenario: Identifies itself to Wikipedia
+- **WHEN** the procedure calls the action API
+- **THEN** the request includes a `User-Agent` header containing the application name and a contact URL so Wikimedia can reach the operator if needed
 
 ---
 
@@ -35,9 +39,23 @@ The system SHALL provide a `reading.addWikipedia` tRPC mutation that accepts an 
 
 ---
 
+### Requirement: Wikipedia content link absolutization
+
+The system SHALL, when converting Wikipedia article HTML to markdown for import, rewrite Wikipedia-relative anchor hrefs (`/wiki/...` and `/w/...`) to absolute URLs whose origin matches the article being imported (e.g. `https://en.wikipedia.org`). The resulting markdown SHALL NOT contain Wikipedia-relative link targets, so the queued content is portable and links are recognizable as Wikipedia URLs by downstream renderers.
+
+#### Scenario: Relative links rewritten to absolute Wikipedia URLs
+- **WHEN** a Wikipedia section's HTML contains `<a href="/wiki/Organelle">organelle</a>`
+- **THEN** the converted markdown contains `[organelle](https://en.wikipedia.org/wiki/Organelle)` rather than `[organelle](/wiki/Organelle)`
+
+#### Scenario: Article origin used for rewrite
+- **WHEN** a section is imported from an article whose URL origin is `https://en.wikipedia.org`
+- **THEN** rewritten links use that same origin
+
+---
+
 ### Requirement: Wikipedia add page with section checklist
 
-The system SHALL provide a `/reading/add` Next.js route with a URL input field. When a Wikipedia URL is submitted, the page SHALL call `reading.fetchWikipedia`, display the returned sections as a checklist with section titles and a content preview, and allow the user to select individual sections before confirming. Confirming SHALL call `reading.addWikipedia` with the selected sections and redirect to `/reading`.
+The system SHALL provide a `/reading/add` Next.js route with a URL input field. When a Wikipedia URL is submitted, the page SHALL call `reading.fetchWikipedia`, display the returned sections as a checklist with section titles and a content preview, and allow the user to select individual sections before confirming. The page SHALL provide a single toggle that selects all sections or clears the selection, and SHALL indicate how many of the available sections are currently selected. Confirming SHALL call `reading.addWikipedia` with the selected sections and redirect to `/reading`.
 
 #### Scenario: Section checklist rendered after URL submit
 - **WHEN** the user pastes a Wikipedia URL and submits
@@ -47,27 +65,18 @@ The system SHALL provide a `/reading/add` Next.js route with a URL input field. 
 - **WHEN** the user checks three of seven sections and clicks "Add to queue"
 - **THEN** `reading.addWikipedia` is called with exactly those three sections
 
+#### Scenario: Select all toggles entire checklist
+- **WHEN** the user clicks the "Select all" control on a freshly fetched preview
+- **THEN** every section becomes checked and the control's label flips to "Deselect all"
+- **AND** an "N of M selected" indicator displays the current selection count
+
+#### Scenario: Deselect all clears selection
+- **WHEN** every section is checked and the user clicks "Deselect all"
+- **THEN** the selection is cleared and the indicator reads "0 of M selected"
+
 #### Scenario: Fetch error shown inline
 - **WHEN** the Wikipedia fetch fails
 - **THEN** an inline error message is shown on `/reading/add` with a retry option; the user is not navigated away
-
----
-
-### Requirement: Wikilink follow during reading session
-
-The system SHALL, for ReadingItems with `sourceType = WIKIPEDIA_SECTION`, render links to other Wikipedia articles in the markdown content with an adjacent "+" button. Clicking the "+" button SHALL call `reading.fetchWikipedia` for the linked article and immediately call `reading.addWikipedia` to queue all sections of that article, without navigating away from the current reading session.
-
-#### Scenario: Wikipedia link shows "+" chip
-- **WHEN** a WIKIPEDIA_SECTION item is rendered in the session and its content contains a link to another Wikipedia article
-- **THEN** a "+" button is rendered adjacent to that link
-
-#### Scenario: Clicking "+" queues linked article
-- **WHEN** the user clicks "+" next to a Wikipedia link
-- **THEN** all sections of the linked article are added to the reading queue and a success toast confirms the addition
-
-#### Scenario: Non-Wikipedia links are unaffected
-- **WHEN** a WIKIPEDIA_SECTION item contains links to non-Wikipedia URLs
-- **THEN** those links are rendered normally without a "+" button
 
 ---
 

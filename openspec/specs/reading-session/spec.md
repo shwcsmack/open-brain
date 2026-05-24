@@ -83,6 +83,28 @@ The system SHALL, when the user clicks "Create Flashcard" in the selection toolb
 
 ---
 
+### Requirement: Wikipedia link interception in reading session
+
+The system SHALL, in the reading session content area, intercept clicks on links whose hostname ends in `wikipedia.org`. Instead of navigating away or opening a new tab, the session SHALL fetch all sections of the linked article via `reading.fetchWikipedia` and queue them via `reading.addWikipedia`, regardless of the current ReadingItem's `sourceType`. The session SHALL show a loading toast while the import is in flight, replace it with a success toast that names the article and reports how many sections were added on success, or with an error toast on failure. The session SHALL guard against duplicate concurrent imports for the same target URL.
+
+#### Scenario: Wikipedia link click enqueues article
+- **WHEN** the user clicks a link to `https://en.wikipedia.org/wiki/Office_of_the_Director_of_National_Intelligence` inside any reading session content
+- **THEN** the browser does not navigate, all sections of that article are added to the reading queue, and a success toast confirms the addition with the article title and the number of sections added
+
+#### Scenario: Loading state while importing
+- **WHEN** a Wikipedia link is clicked and the import is still in progress
+- **THEN** a loading toast is shown that is replaced by the success or error toast for the same import
+
+#### Scenario: Duplicate click guarded
+- **WHEN** the user clicks the same Wikipedia link a second time while the first import is still in flight
+- **THEN** the second click does not start a second import; the user is informed that the article is already being added
+
+#### Scenario: Non-Wikipedia links unaffected
+- **WHEN** the user clicks a non-Wikipedia link in the session content
+- **THEN** the link behaves as a normal external link (opens in a new tab) and no reading queue activity occurs
+
+---
+
 ### Requirement: FSRS rating bar
 
 The system SHALL display a rating bar at the bottom of the reading session with four buttons: **Again**, **Hard**, **Good**, **Easy**. Clicking a rating SHALL call `reading.review` with the current item's id and rating, then advance the session to the next due item.
