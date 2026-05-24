@@ -131,6 +131,14 @@ export default function ReadingAddPage() {
     })
   }
 
+  function toggleSelectAll() {
+    setSelectedSectionIndexes(prev =>
+      prev.size === wikiSections.length
+        ? new Set()
+        : new Set(wikiSections.map((_, i) => i))
+    )
+  }
+
   function handleAddWikipediaSections() {
     const selected = wikiSections.filter((_, i) => selectedSectionIndexes.has(i))
     if (selected.length === 0) {
@@ -318,6 +326,21 @@ export default function ReadingAddPage() {
                 Select sections from{' '}
                 <span className="text-foreground font-medium">{submittedUrl}</span>
               </p>
+              <div className="flex items-center justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSelectAll}
+                >
+                  {selectedSectionIndexes.size === wikiSections.length
+                    ? 'Deselect all'
+                    : 'Select all'}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {selectedSectionIndexes.size} of {wikiSections.length} selected
+                </span>
+              </div>
               <div className="flex flex-col gap-2">
                 {(wikiSections as WikipediaSection[]).map((section, index) => {
                   const checkboxId = `wiki-section-${index}`
