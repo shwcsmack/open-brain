@@ -251,6 +251,18 @@ const mockWikipediaResponse = {
   },
 }
 
+const mockWikipediaParseResponse = {
+  parse: {
+    title: 'Mitochondrion',
+    text: [
+      '<p>Lead with <a href="/wiki/Organelle">organelle</a>.</p>',
+      '<h2 id="Structure">Structure</h2>',
+      '<p>Body with <a href="/wiki/Cell">cell</a>.</p>',
+    ].join(''),
+    sections: [{ toclevel: 1, line: 'Structure', anchor: 'Structure' }],
+  },
+}
+
 describe('resolveWikipediaFetchTarget', () => {
   it('uses canonical url field (Wikipedia URL)', () => {
     assert.equal(
@@ -320,6 +332,16 @@ describe('fetchWikipediaForReading', () => {
 
     const sections = await fetchWikipediaForReading('Mitochondria')
     assert.equal(sections.length, 2)
+  })
+
+  it('absolutizes Wikipedia-relative links in parsed article content', async () => {
+    global.fetch = async () =>
+      new Response(JSON.stringify(mockWikipediaParseResponse), { status: 200 })
+
+    const sections = await fetchWikipediaForReading('Mitochondrion')
+    assert.ok(sections[0].content.includes('https://en.wikipedia.org/wiki/Organelle'))
+    assert.ok(sections[1].content.includes('https://en.wikipedia.org/wiki/Cell'))
+    assert.ok(!sections.some(section => section.content.includes('](/wiki/')))
   })
 
   it('throws on 404 with a descriptive message', async () => {

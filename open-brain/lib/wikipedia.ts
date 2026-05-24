@@ -89,9 +89,23 @@ function stripBalancedTag(html: string, tag: string, classPattern: RegExp): stri
   return out
 }
 
-function sanitizeSectionHtml(html: string): string {
+function absolutizeWikipediaLinks(html: string, articleUrl: string): string {
+  let origin: string
+  try {
+    origin = new URL(articleUrl).origin
+  } catch {
+    origin = 'https://en.wikipedia.org'
+  }
+  return html.replace(
+    /(<a\b[^>]*\bhref=")(\/(?:wiki|w)\/[^"]*)(")/gi,
+    (_m, pre: string, path: string, post: string) => `${pre}${origin}${path}${post}`
+  )
+}
+
+function sanitizeSectionHtml(html: string, articleUrl: string): string {
   let out = stripBalancedTag(html, 'span', /\bmw-editsection\b/)
   out = stripBalancedTag(out, 'table', /\bnavbox\b/)
+  out = absolutizeWikipediaLinks(out, articleUrl)
   return out
 }
 
@@ -114,7 +128,7 @@ function parseFromActionApi(
 
   const sections: WikipediaSection[] = []
   const leadEnd = matches.length > 0 ? matches[0].start : html.length
-  const leadHtml = sanitizeSectionHtml(html.slice(0, leadEnd)).trim()
+  const leadHtml = sanitizeSectionHtml(html.slice(0, leadEnd), articleUrl).trim()
   if (leadHtml) {
     sections.push({
       sectionTitle: 'Introduction',
@@ -125,7 +139,7 @@ function parseFromActionApi(
   for (let i = 0; i < matches.length; i++) {
     const start = matches[i].afterH2
     const end = i + 1 < matches.length ? matches[i + 1].start : html.length
-    const body = sanitizeSectionHtml(html.slice(start, end)).trim()
+    const body = sanitizeSectionHtml(html.slice(start, end), articleUrl).trim()
     if (!body) continue
     sections.push({
       sectionTitle: stripHtmlTags(matches[i].line) || matches[i].line,

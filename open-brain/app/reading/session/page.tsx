@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
@@ -32,6 +32,18 @@ type ReadingItem = {
   sourceType: string
   extractedText: string | null
   parentItemId: string | null
+}
+
+function titleFromWikipediaUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const parts = parsed.pathname.split('/')
+    const wikiIndex = parts.indexOf('wiki')
+    if (wikiIndex === -1 || wikiIndex + 1 >= parts.length) return 'Wikipedia article'
+    return decodeURIComponent(parts[wikiIndex + 1]).replace(/_/g, ' ')
+  } catch {
+    return 'Wikipedia article'
+  }
 }
 
 function SessionShell({ children }: { children: React.ReactNode }) {
@@ -78,6 +90,7 @@ export default function ReadingSessionPage() {
   const [done, setDone] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [localExtracts, setLocalExtracts] = useState<string[]>([])
+  const addingWikipediaUrls = useRef(new Set<string>())
 
   const [noteDialog, setNoteDialog] = useState<{ open: boolean; text: string; title: string }>({
     open: false,
@@ -112,12 +125,10 @@ export default function ReadingSessionPage() {
     onError: () => toast.error('Failed to save note'),
   })
   const addWikipediaMutation = trpc.reading.addWikipedia.useMutation({
-    onSuccess: items => {
-      toast.success(`Added ${items.length} Wikipedia sections to queue`)
+    onSuccess: () => {
       utils.reading.listDue.invalidate()
       utils.reading.listAll.invalidate()
     },
-    onError: () => toast.error('Failed to add Wikipedia article'),
   })
 
   useEffect(() => {
@@ -171,9 +182,16 @@ export default function ReadingSessionPage() {
   }
 
   async function handleAddWikipediaLink(url: string) {
+    if (addingWikipediaUrls.current.has(url)) {
+      toast.info('Already adding that Wikipedia article')
+      return
+    }
+    const articleTitle = titleFromWikipediaUrl(url)
+    const toastId = toast.loading(`Adding "${articleTitle}" to reading queue...`)
+    addingWikipediaUrls.current.add(url)
     try {
       const sections = await utils.reading.fetchWikipedia.fetch({ url })
-      addWikipediaMutation.mutate(
+      const items = await addWikipediaMutation.mutateAsync(
         sections.map(s => ({
           title: s.title,
           content: s.content,
@@ -181,8 +199,11 @@ export default function ReadingSessionPage() {
           sectionTitle: s.sectionTitle,
         }))
       )
+      toast.success(`Added "${articleTitle}" (${items.length} sections) to queue`, { id: toastId })
     } catch {
-      toast.error('Failed to fetch Wikipedia article')
+      toast.error(`Failed to add "${articleTitle}"`, { id: toastId })
+    } finally {
+      addingWikipediaUrls.current.delete(url)
     }
   }
 
@@ -207,8 +228,6 @@ export default function ReadingSessionPage() {
       </SessionShell>
     )
   }
-
-  const showWikiPlus = current.sourceType === 'WIKIPEDIA_SECTION'
 
   return (
     <SessionShell>
@@ -238,7 +257,7 @@ export default function ReadingSessionPage() {
           <ExtractHighlighter
             markdown={current.content}
             extractedTexts={extractedTexts}
-            onAddWikipediaLink={showWikiPlus ? handleAddWikipediaLink : undefined}
+            onAddWikipediaLink={handleAddWikipediaLink}
           />
         </div>
 

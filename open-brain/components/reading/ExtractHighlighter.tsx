@@ -41,30 +41,21 @@ export function ExtractHighlighter({ markdown, extractedTexts, onAddWikipediaLin
           a: ({ href, children }) => {
             const wiki = href && isWikipediaUrl(href)
             return (
-              <span className="inline-flex items-center gap-0.5">
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline"
-                >
-                  {children}
-                </a>
-                {wiki && onAddWikipediaLink && (
-                  <button
-                    type="button"
-                    className="inline-flex size-4 items-center justify-center rounded-full bg-secondary text-xs leading-none hover:bg-accent"
-                    title="Add to reading queue"
-                    onClick={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      onAddWikipediaLink(href!)
-                    }}
-                  >
-                    +
-                  </button>
-                )}
-              </span>
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+                title={wiki && onAddWikipediaLink ? 'Add Wikipedia article to reading queue' : undefined}
+                onClick={e => {
+                  if (!wiki || !onAddWikipediaLink || !href) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onAddWikipediaLink(href)
+                }}
+              >
+                {children}
+              </a>
             )
           },
           del: ({ children }) => (
