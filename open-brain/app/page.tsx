@@ -19,6 +19,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent" onClick={onNavigate}>Graph</Link>
       <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent" onClick={onNavigate}>Decks</Link>
       <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent" onClick={onNavigate}>Review</Link>
+      <Link href="/reading" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent" onClick={onNavigate}>Reading</Link>
       <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent" onClick={onNavigate}>Settings</Link>
     </nav>
   )

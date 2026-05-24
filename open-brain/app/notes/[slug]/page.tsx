@@ -61,6 +61,18 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
 
   const { data: note, isLoading } = trpc.note.getBySlug.useQuery({ slug })
   const { data: notes = [] } = trpc.note.list.useQuery(undefined, { refetchInterval: 30000 })
+  const { data: queuedForNote = [] } = trpc.reading.listAll.useQuery(
+    { sourceNoteId: note?.id },
+    { enabled: !!note?.id }
+  )
+  const addToReadingQueue = trpc.reading.addNote.useMutation({
+    onSuccess: () => {
+      toast.success('Added to reading queue')
+      utils.reading.listAll.invalidate()
+      utils.reading.listDue.invalidate()
+    },
+    onError: () => toast.error('Failed to add to reading queue'),
+  })
 
   // Explicit Save / metadata edits surface a toast; auto-save is silent so the
   // user isn't carpet-bombed with "Note saved" every second while typing.
@@ -170,6 +182,8 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
     /* noop */
   }
 
+  const isQueued = queuedForNote.length > 0
+
   const autocompleteNotes: AutocompleteNote[] = notes.map(
     ({ id, title, slug: noteSlug, tags }) => ({
       id,
@@ -200,6 +214,14 @@ export default function NotePage({ params }: { params: Promise<{ slug: string }>
           <ModeToggle mode={mode} onChange={handleModeSwitch} />
           <Button size="sm" onClick={handleExplicitSave} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? 'Saving…' : 'Save'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isQueued || addToReadingQueue.isPending}
+            onClick={() => addToReadingQueue.mutate({ noteId: note.id })}
+          >
+            {isQueued ? 'In reading queue' : 'Add to reading queue'}
           </Button>
           <Link href={`/graph?focus=${note.id}`}>
             <Button variant="outline" size="sm">

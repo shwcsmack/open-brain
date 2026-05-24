@@ -167,6 +167,7 @@ export default function ReviewSessionPage() {
             <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
             <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Decks</Link>
             <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Review</Link>
+            <Link href="/reading" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Reading</Link>
             <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Settings</Link>
           </nav>
         </aside>
@@ -216,6 +217,7 @@ export default function ReviewSessionPage() {
             <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
             <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Decks</Link>
             <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Review</Link>
+            <Link href="/reading" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Reading</Link>
             <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Settings</Link>
           </nav>
         </aside>
@@ -234,6 +236,7 @@ export default function ReviewSessionPage() {
           <nav className="flex flex-col gap-1">
             <Link href="/" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Notes</Link>
             <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Review</Link>
+            <Link href="/reading" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Reading</Link>
           </nav>
         </aside>
         <main className="flex-1 p-6 flex items-center justify-center">
@@ -259,6 +262,7 @@ export default function ReviewSessionPage() {
           <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
           <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Decks</Link>
           <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Review</Link>
+          <Link href="/reading" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Reading</Link>
           <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Settings</Link>
         </nav>
         <div className="border-t pt-4 space-y-1 text-xs text-muted-foreground">

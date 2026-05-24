@@ -9,6 +9,7 @@ import { periodicTemplateRouter } from './routers/periodicTemplate'
 import { flashcardRouter } from './routers/flashcard'
 import { deckRouter } from './routers/deck'
 import { reviewRouter } from './routers/review'
+import { readingRouter } from './routers/reading'
 
 export const appRouter = router({
   auth: authRouter,
@@ -20,6 +21,7 @@ export const appRouter = router({
   flashcard: flashcardRouter,
   deck: deckRouter,
   review: reviewRouter,
+  reading: readingRouter,
   periodicTemplate: periodicTemplateRouter,
 })
 

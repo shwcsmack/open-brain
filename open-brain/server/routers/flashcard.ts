@@ -22,6 +22,7 @@ export const flashcardRouter = router({
         clozeIndex: z.number().int().optional(),
         noteId: z.string().optional(),
         deckId: z.string().optional(),
+        sourceReadingItemId: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -38,6 +39,7 @@ export const flashcardRouter = router({
             back: input.back,
             clozeIndex: input.clozeIndex,
             noteId: input.noteId,
+            sourceReadingItemId: input.sourceReadingItemId,
             // FSRS initial values
             stability: 0,
             difficulty: 0,

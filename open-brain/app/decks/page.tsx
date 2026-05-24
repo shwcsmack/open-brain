@@ -61,6 +61,7 @@ export default function DecksPage() {
           <Link href="/graph" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Graph</Link>
           <Link href="/decks" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent">Decks</Link>
           <Link href="/review" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Review</Link>
+          <Link href="/reading" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Reading</Link>
           <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">Settings</Link>
         </nav>
       </aside>

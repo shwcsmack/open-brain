@@ -17,6 +17,7 @@ interface CardCreationModalProps {
   onClose: () => void
   noteId?: string
   initialFront?: string
+  sourceReadingItemId?: string
 }
 
 export function CardCreationModal({
@@ -24,6 +25,7 @@ export function CardCreationModal({
   onClose,
   noteId,
   initialFront = '',
+  sourceReadingItemId,
 }: CardCreationModalProps) {
   const utils = trpc.useUtils()
   const [type, setType] = useState<'BASIC' | 'CLOZE'>('BASIC')
@@ -67,6 +69,7 @@ export function CardCreationModal({
       back: type === 'BASIC' ? back.trim() || undefined : undefined,
       noteId: noteId || undefined,
       deckId: deckId || undefined,
+      sourceReadingItemId: sourceReadingItemId || undefined,
     })
   }
 
