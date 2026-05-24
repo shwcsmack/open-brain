@@ -1,10 +1,10 @@
 ## 1. Database Schema
 
-- [ ] 1.1 Add `ReadingItem` model to `prisma/schema.prisma` with all fields: id, title, content, sourceType enum (NOTE | URL | WIKIPEDIA_SECTION | EXTRACT), url, articleUrl, sectionTitle, sourceNoteId FK → Note, parentItemId self-reference FK → ReadingItem, extractedText, priority (Int default 50), FSRS fields (stability, difficulty, due, reps, lapses, state, lastReview) matching Flashcard, deletedAt, createdAt, updatedAt
-- [ ] 1.2 Add `FSRSState` enum reuse or duplicate for `ReadingItem.state` (NOTE: FSRSState already exists in schema for Flashcard — confirm it can be shared or must be re-declared)
-- [ ] 1.3 Add nullable `sourceReadingItemId` FK → ReadingItem to `Note` model
-- [ ] 1.4 Add nullable `sourceReadingItemId` FK → ReadingItem to `Flashcard` model
-- [ ] 1.5 Run `npx prisma migrate dev --name add-reading-module` and verify migration applies cleanly
+- [x] 1.1 Add `ReadingItem` model to `prisma/schema.prisma` with all fields: id, title, content, sourceType enum (NOTE | URL | WIKIPEDIA_SECTION | EXTRACT), url, articleUrl, sectionTitle, sourceNoteId FK → Note, parentItemId self-reference FK → ReadingItem, extractedText, priority (Int default 50), FSRS fields (stability, difficulty, due, reps, lapses, state, lastReview) matching Flashcard, deletedAt, createdAt, updatedAt
+- [x] 1.2 Add `FSRSState` enum reuse or duplicate for `ReadingItem.state` (NOTE: FSRSState already exists in schema for Flashcard — confirm it can be shared or must be re-declared)
+- [x] 1.3 Add nullable `sourceReadingItemId` FK → ReadingItem to `Note` model
+- [x] 1.4 Add nullable `sourceReadingItemId` FK → ReadingItem to `Flashcard` model
+- [x] 1.5 Run `npx prisma migrate dev --name add-reading-module` and verify migration applies cleanly
 
 ## 2. tRPC Router — Queue Operations
 

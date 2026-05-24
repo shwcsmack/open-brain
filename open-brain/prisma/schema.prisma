@@ -39,6 +39,10 @@ model Note {
   tasks      Task[]
   flashcards Flashcard[]
 
+  sourceReadingItemId String?
+  sourceReadingItem   ReadingItem?  @relation("NoteFromReading", fields: [sourceReadingItemId], references: [id], onDelete: SetNull)
+  readingItems        ReadingItem[] @relation("NoteReadingItems")
+
   @@unique([periodType, periodKey])
 }
 
@@ -115,6 +119,9 @@ model Flashcard {
   lastReview DateTime?
   deletedAt  DateTime?
   createdAt  DateTime   @default(now())
+
+  sourceReadingItemId String?
+  sourceReadingItem   ReadingItem? @relation("FlashcardFromReading", fields: [sourceReadingItemId], references: [id], onDelete: SetNull)
 }
 
 model DeckCard {
@@ -131,4 +138,45 @@ model PeriodicTemplate {
   periodType PeriodType @unique
   content    String     @default("{}")
   updatedAt  DateTime   @updatedAt
+}
+
+enum ReadingSource {
+  NOTE
+  URL
+  WIKIPEDIA_SECTION
+  EXTRACT
+}
+
+model ReadingItem {
+  id            String        @id @default(uuid())
+  title         String
+  content       String        @default("")
+  sourceType    ReadingSource
+  url           String?
+  articleUrl    String?
+  sectionTitle  String?
+  priority      Int           @default(50)
+  extractedText String?
+
+  sourceNoteId String?
+  sourceNote   Note?   @relation("NoteReadingItems", fields: [sourceNoteId], references: [id], onDelete: SetNull)
+
+  parentItemId String?
+  parentItem   ReadingItem?  @relation("ExtractTree", fields: [parentItemId], references: [id], onDelete: SetNull)
+  children     ReadingItem[] @relation("ExtractTree")
+
+  stability  Float     @default(0)
+  difficulty Float     @default(0)
+  due        DateTime  @default(now())
+  reps       Int       @default(0)
+  lapses     Int       @default(0)
+  state      FSRSState @default(NEW)
+  lastReview DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  terminatedNotes      Note[]      @relation("NoteFromReading")
+  terminatedFlashcards Flashcard[] @relation("FlashcardFromReading")
 }
