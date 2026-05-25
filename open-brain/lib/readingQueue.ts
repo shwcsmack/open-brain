@@ -2,21 +2,18 @@ import { TRPCError } from '@trpc/server'
 import { computeNextState, Rating, type Grade } from '@/lib/fsrs'
 import { htmlToMarkdown } from '@/lib/htmlToMarkdown'
 import { uniqueSlug } from '@/lib/slug'
-import { fetchWikipediaSections } from '@/lib/wikipedia'
+import {
+  canonicalWikipediaArticleUrl,
+  fetchWikipediaSections,
+  mergeWikipediaSections,
+  wikipediaSlugFromTitleOrUrl,
+} from '@/lib/wikipedia'
 import type { PrismaClient } from '@/lib/generated/prisma/client'
 
-export type WikipediaFetchedSection = {
+export type WikipediaArticle = {
   title: string
   content: string
   articleUrl: string
-  sectionTitle: string
-}
-
-export type WikipediaQueueInput = {
-  title: string
-  content: string
-  articleUrl: string
-  sectionTitle: string
 }
 
 export type AddUrlInput = {
@@ -36,7 +33,7 @@ export type WikipediaFetchInput = {
 }
 
 export type ReadingListFilters = {
-  sourceType?: 'NOTE' | 'URL' | 'WIKIPEDIA_SECTION' | 'EXTRACT'
+  sourceType?: 'NOTE' | 'URL' | 'WIKIPEDIA' | 'EXTRACT'
   state?: 'NEW' | 'LEARNING' | 'REVIEW' | 'RELEARNING'
   sourceNoteId?: string
   parentItemId?: string
@@ -69,7 +66,7 @@ export async function addNoteToQueue(db: PrismaClient, noteId: string) {
 export async function listDueItems(db: PrismaClient) {
   const now = new Date()
   return db.readingItem.findMany({
-    where: { deletedAt: null, due: { lte: now } },
+    where: { deletedAt: null, archivedAt: null, due: { lte: now } },
     orderBy: [{ priority: 'desc' }, { due: 'asc' }],
   })
 }
@@ -78,6 +75,7 @@ export async function listAllItems(db: PrismaClient, filters?: ReadingListFilter
   return db.readingItem.findMany({
     where: {
       deletedAt: null,
+      archivedAt: null,
       ...(filters?.sourceType ? { sourceType: filters.sourceType } : {}),
       ...(filters?.state ? { state: filters.state } : {}),
       ...(filters?.sourceNoteId ? { sourceNoteId: filters.sourceNoteId } : {}),
@@ -85,6 +83,144 @@ export async function listAllItems(db: PrismaClient, filters?: ReadingListFilter
     },
     orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
   })
+}
+
+function readingItemNotFound(): never {
+  throw new TRPCError({ code: 'NOT_FOUND', message: 'Reading item not found' })
+}
+
+async function requireActiveReadingItem(db: PrismaClient, id: string) {
+  const item = await db.readingItem.findFirst({ where: { id, deletedAt: null } })
+  if (!item) readingItemNotFound()
+  return item
+}
+
+export async function archiveItem(db: PrismaClient, id: string) {
+  await requireActiveReadingItem(db, id)
+  return db.readingItem.update({ where: { id }, data: { archivedAt: new Date() } })
+}
+
+export async function unarchiveItem(db: PrismaClient, id: string) {
+  await requireActiveReadingItem(db, id)
+  return db.readingItem.update({ where: { id }, data: { archivedAt: null } })
+}
+
+export async function deleteItem(db: PrismaClient, id: string) {
+  const item = await requireActiveReadingItem(db, id)
+  await db.readingItem.delete({ where: { id } })
+  return item
+}
+
+function parseHiddenPassagesJson(hiddenPassages: string): string[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(hiddenPassages)
+  } catch {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'hiddenPassages must be valid JSON',
+    })
+  }
+  if (!Array.isArray(parsed) || !parsed.every((entry): entry is string => typeof entry === 'string')) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'hiddenPassages must be a JSON array of strings',
+    })
+  }
+  return parsed
+}
+
+export async function hidePassage(db: PrismaClient, id: string, text: string) {
+  const item = await requireActiveReadingItem(db, id)
+  const current = parseHiddenPassagesJson(item.hiddenPassages)
+  return db.readingItem.update({
+    where: { id },
+    data: { hiddenPassages: JSON.stringify([...current, text]) },
+  })
+}
+
+export async function restorePassage(db: PrismaClient, id: string, text: string) {
+  const item = await requireActiveReadingItem(db, id)
+  const current = parseHiddenPassagesJson(item.hiddenPassages)
+  const idx = current.indexOf(text)
+  if (idx === -1) return item
+  const next = [...current.slice(0, idx), ...current.slice(idx + 1)]
+  return db.readingItem.update({ where: { id }, data: { hiddenPassages: JSON.stringify(next) } })
+}
+
+export async function bulkArchive(db: PrismaClient, ids: string[]) {
+  const result = await db.readingItem.updateMany({
+    where: { id: { in: ids }, deletedAt: null },
+    data: { archivedAt: new Date() },
+  })
+  return result.count
+}
+
+export async function bulkDelete(db: PrismaClient, ids: string[]) {
+  const result = await db.readingItem.deleteMany({ where: { id: { in: ids } } })
+  return result.count
+}
+
+export async function getItemById(db: PrismaClient, id: string) {
+  return db.readingItem.findFirst({ where: { id, deletedAt: null } })
+}
+
+export async function listArchivedItems(
+  db: PrismaClient,
+  filters?: { sourceType?: 'NOTE' | 'URL' | 'WIKIPEDIA' | 'EXTRACT' }
+) {
+  return db.readingItem.findMany({
+    where: {
+      deletedAt: null,
+      archivedAt: { not: null },
+      ...(filters?.sourceType ? { sourceType: filters.sourceType } : {}),
+    },
+    orderBy: { archivedAt: 'desc' },
+  })
+}
+
+type WikipediaImportCandidate = {
+  id: string
+  archivedAt: Date | null
+  createdAt: Date
+}
+
+/** Active imports beat archived; within the same state, newest createdAt wins. */
+function isPreferredWikipediaImport(
+  candidate: WikipediaImportCandidate,
+  incumbent: WikipediaImportCandidate
+): boolean {
+  const candidateActive = candidate.archivedAt === null
+  const incumbentActive = incumbent.archivedAt === null
+  if (candidateActive !== incumbentActive) return candidateActive
+  return candidate.createdAt.getTime() > incumbent.createdAt.getTime()
+}
+
+export async function getImportedWikipediaUrls(
+  db: PrismaClient
+): Promise<Record<string, { id: string; archivedAt: Date | null }>> {
+  const items = await db.readingItem.findMany({
+    where: { deletedAt: null, articleUrl: { not: null } },
+    select: { id: true, articleUrl: true, archivedAt: true, createdAt: true },
+  })
+  const winners: Record<string, WikipediaImportCandidate> = {}
+  for (const item of items) {
+    if (!item.articleUrl) continue
+    const candidate: WikipediaImportCandidate = {
+      id: item.id,
+      archivedAt: item.archivedAt,
+      createdAt: item.createdAt,
+    }
+    const incumbent = winners[item.articleUrl]
+    if (!incumbent || isPreferredWikipediaImport(candidate, incumbent)) {
+      winners[item.articleUrl] = candidate
+    }
+  }
+  const map: Record<string, { id: string; archivedAt: Date | null }> = {}
+  for (const [articleUrl, winner] of Object.entries(winners)) {
+    map[articleUrl] = { id: winner.id, archivedAt: winner.archivedAt }
+  }
+  return map
 }
 
 export async function extractPassage(
@@ -160,15 +296,16 @@ export function resolveWikipediaFetchTarget(input: WikipediaFetchInput): string 
 export async function fetchWikipediaForReading(
   titleOrUrl: string,
   fetchFn?: typeof fetch
-): Promise<WikipediaFetchedSection[]> {
+): Promise<WikipediaArticle> {
   try {
+    const slug = wikipediaSlugFromTitleOrUrl(titleOrUrl)
+    if (!slug) {
+      throw new Error('Invalid Wikipedia URL')
+    }
     const sections = await fetchWikipediaSections(titleOrUrl, fetchFn)
-    return sections.map(s => ({
-      title: s.sectionTitle,
-      content: s.content,
-      articleUrl: s.articleUrl,
-      sectionTitle: s.sectionTitle,
-    }))
+    const title = slug.replace(/_/g, ' ')
+    const articleUrl = canonicalWikipediaArticleUrl(slug)
+    return mergeWikipediaSections(sections, title, articleUrl)
   } catch (err) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
@@ -177,24 +314,16 @@ export async function fetchWikipediaForReading(
   }
 }
 
-export async function addWikipediaToQueue(db: PrismaClient, sections: WikipediaQueueInput[]) {
-  if (sections.length === 0) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: 'No sections to add' })
-  }
-  return Promise.all(
-    sections.map(section =>
-      db.readingItem.create({
-        data: {
-          title: section.title,
-          content: section.content,
-          sourceType: 'WIKIPEDIA_SECTION',
-          url: section.articleUrl,
-          articleUrl: section.articleUrl,
-          sectionTitle: section.sectionTitle,
-        },
-      })
-    )
-  )
+export async function addWikipediaToQueue(db: PrismaClient, article: WikipediaArticle) {
+  return db.readingItem.create({
+    data: {
+      title: article.title,
+      content: article.content,
+      sourceType: 'WIKIPEDIA',
+      url: article.articleUrl,
+      articleUrl: article.articleUrl,
+    },
+  })
 }
 
 function extractTitleFromHtml(html: string, fallback: string): string {

@@ -24,20 +24,12 @@ function trpcErrorMessage(err: { message?: string } | null | undefined): string 
   return err?.message?.trim() || 'Something went wrong. Try again.'
 }
 
-type WikipediaSection = {
-  title: string
-  content: string
-  articleUrl: string
-  sectionTitle: string
-}
-
 export default function ReadingAddPage() {
   const router = useRouter()
   const utils = trpc.useUtils()
 
   const [urlInput, setUrlInput] = useState('')
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null)
-  const [selectedSectionIndexes, setSelectedSectionIndexes] = useState<Set<number>>(new Set())
   const [showManualPaste, setShowManualPaste] = useState(false)
   const [manualTitle, setManualTitle] = useState('')
   const [manualContent, setManualContent] = useState('')
@@ -60,7 +52,7 @@ export default function ReadingAddPage() {
   const activeQuery = isWikiFetch ? wikiQuery : urlPreviewQuery
   const isFetching = submittedUrl !== null && activeQuery.isFetching
   const fetchError = submittedUrl !== null && activeQuery.isError ? activeQuery.error : null
-  const wikiSections = wikiQuery.data ?? []
+  const wikiArticle = wikiQuery.data
   const urlPreview = urlPreviewQuery.data
 
   const addWikipedia = trpc.reading.addWikipedia.useMutation({
@@ -103,7 +95,6 @@ export default function ReadingAddPage() {
 
   function resetUrlFlow() {
     setSubmittedUrl(null)
-    setSelectedSectionIndexes(new Set())
     clearManualPaste()
   }
 
@@ -118,41 +109,15 @@ export default function ReadingAddPage() {
       return
     }
     clearManualPaste()
-    setSelectedSectionIndexes(new Set())
     setSubmittedUrl(trimmed)
   }
 
-  function toggleSection(index: number) {
-    setSelectedSectionIndexes(prev => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
-  }
-
-  function toggleSelectAll() {
-    setSelectedSectionIndexes(prev =>
-      prev.size === wikiSections.length
-        ? new Set()
-        : new Set(wikiSections.map((_, i) => i))
-    )
-  }
-
-  function handleAddWikipediaSections() {
-    const selected = wikiSections.filter((_, i) => selectedSectionIndexes.has(i))
-    if (selected.length === 0) {
-      toast.error('Select at least one section')
+  function handleAddWholeArticle() {
+    if (!wikiArticle) {
+      toast.error('No article loaded')
       return
     }
-    addWikipedia.mutate(
-      selected.map(s => ({
-        title: s.title,
-        content: s.content,
-        articleUrl: s.articleUrl,
-        sectionTitle: s.sectionTitle,
-      }))
-    )
+    addWikipedia.mutate(wikiArticle)
   }
 
   function handleConfirmUrlPreview() {
@@ -178,8 +143,8 @@ export default function ReadingAddPage() {
     })
   }
 
-  const showWikiChecklist =
-    isWikiFetch && !isFetching && !fetchError && wikiSections.length > 0
+  const showWikiPreview =
+    isWikiFetch && !isFetching && !fetchError && wikiArticle !== undefined
   const showUrlPreview =
     !isWikiFetch && !isFetching && !fetchError && urlPreview !== undefined
 
@@ -214,6 +179,12 @@ export default function ReadingAddPage() {
             className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent bg-accent"
           >
             Reading
+          </Link>
+          <Link
+            href="/reading/archive"
+            className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent pl-6 text-muted-foreground"
+          >
+            Archive
           </Link>
           <Link href="/settings" className="text-sm font-medium px-2 py-1.5 rounded hover:bg-accent">
             Settings
@@ -320,67 +291,17 @@ export default function ReadingAddPage() {
             </div>
           )}
 
-          {showWikiChecklist && (
+          {showWikiPreview && (
             <div className="flex flex-col gap-4">
-              <p className="text-sm text-muted-foreground">
-                Select sections from{' '}
-                <span className="text-foreground font-medium">{submittedUrl}</span>
-              </p>
-              <div className="flex items-center justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleSelectAll}
-                >
-                  {selectedSectionIndexes.size === wikiSections.length
-                    ? 'Deselect all'
-                    : 'Select all'}
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {selectedSectionIndexes.size} of {wikiSections.length} selected
-                </span>
+              <div>
+                <h3 className="text-lg font-semibold">{wikiArticle.title}</h3>
+                <p className="text-xs text-muted-foreground mt-1">{submittedUrl}</p>
               </div>
-              <div className="flex flex-col gap-2">
-                {(wikiSections as WikipediaSection[]).map((section, index) => {
-                  const checkboxId = `wiki-section-${index}`
-                  return (
-                    <div
-                      key={`${section.sectionTitle}-${index}`}
-                      className="flex gap-3 p-3 rounded-lg border hover:bg-accent/30"
-                    >
-                      <input
-                        id={checkboxId}
-                        type="checkbox"
-                        className="mt-1 shrink-0"
-                        checked={selectedSectionIndexes.has(index)}
-                        onChange={() => toggleSection(index)}
-                      />
-                      <div className="flex flex-col gap-2 min-w-0 flex-1">
-                        <label
-                          htmlFor={checkboxId}
-                          className="text-sm font-medium cursor-pointer"
-                        >
-                          {section.sectionTitle}
-                        </label>
-                        <details className="text-sm">
-                          <summary className="text-muted-foreground cursor-pointer select-none">
-                            Preview content
-                          </summary>
-                          <div className="mt-2 max-h-40 overflow-y-auto rounded border p-2 bg-muted/30">
-                            <NoteViewer markdown={section.content} />
-                          </div>
-                        </details>
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="rounded-lg border p-4 max-h-96 overflow-y-auto">
+                <NoteViewer markdown={wikiArticle.content} />
               </div>
-              <Button
-                onClick={handleAddWikipediaSections}
-                disabled={addWikipedia.isPending || selectedSectionIndexes.size === 0}
-              >
-                Add to queue
+              <Button onClick={handleAddWholeArticle} disabled={addWikipedia.isPending}>
+                Add whole article to queue
               </Button>
             </div>
           )}

@@ -143,7 +143,7 @@ model PeriodicTemplate {
 enum ReadingSource {
   NOTE
   URL
-  WIKIPEDIA_SECTION
+  WIKIPEDIA
   EXTRACT
 }
 
@@ -173,8 +173,10 @@ model ReadingItem {
   state      FSRSState @default(NEW)
   lastReview DateTime?
 
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
+  deletedAt      DateTime?
+  archivedAt     DateTime?
+  hiddenPassages String    @default("[]")
+  createdAt      DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   terminatedNotes      Note[]      @relation("NoteFromReading")

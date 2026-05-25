@@ -9,20 +9,32 @@ import * as path from 'path'
 import { execSync } from 'child_process'
 import { describe, it, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { TRPCError } from '@trpc/server'
 import { PrismaClient } from '@/lib/generated/prisma/client'
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { mergeWikipediaSections } from '@/lib/wikipedia'
 import {
   addNoteToQueue,
   addUrlToQueue,
   addWikipediaToQueue,
+  archiveItem,
+  bulkArchive,
+  bulkDelete,
+  deleteItem,
   extractPassage,
   fetchWikipediaForReading,
+  getImportedWikipediaUrls,
+  getItemById,
+  hidePassage,
+  restorePassage,
   listAllItems,
+  listArchivedItems,
   listDueItems,
   previewUrlFromFetch,
   resolveWikipediaFetchTarget,
   reviewReadingItem,
   terminateAsNote,
+  unarchiveItem,
 } from '@/lib/readingQueue'
 
 let prisma: PrismaClient
@@ -106,6 +118,21 @@ describe('listDueItems', () => {
     const due = await listDueItems(prisma)
     assert.equal(due.length, 0)
   })
+
+  it('excludes archived items', async () => {
+    const past = new Date(Date.now() - 1000)
+    await prisma.readingItem.create({
+      data: {
+        title: 'Archived',
+        content: '',
+        sourceType: 'URL',
+        due: past,
+        archivedAt: new Date(),
+      },
+    })
+    const due = await listDueItems(prisma)
+    assert.equal(due.length, 0)
+  })
 })
 
 describe('listAllItems', () => {
@@ -175,14 +202,399 @@ describe('listAllItems', () => {
   it('filters by sourceType and state', async () => {
     await prisma.readingItem.createMany({
       data: [
-        { title: 'Wiki Review', content: '', sourceType: 'WIKIPEDIA_SECTION', state: 'REVIEW' },
-        { title: 'Wiki New', content: '', sourceType: 'WIKIPEDIA_SECTION', state: 'NEW' },
+        { title: 'Wiki Review', content: '', sourceType: 'WIKIPEDIA', state: 'REVIEW' },
+        { title: 'Wiki New', content: '', sourceType: 'WIKIPEDIA', state: 'NEW' },
         { title: 'Url Review', content: '', sourceType: 'URL', state: 'REVIEW' },
       ],
     })
 
-    const items = await listAllItems(prisma, { sourceType: 'WIKIPEDIA_SECTION', state: 'REVIEW' })
+    const items = await listAllItems(prisma, { sourceType: 'WIKIPEDIA', state: 'REVIEW' })
     assert.deepEqual(items.map(item => item.title), ['Wiki Review'])
+  })
+
+  it('excludes archived items', async () => {
+    await prisma.readingItem.create({
+      data: { title: 'Active', content: '', sourceType: 'URL' },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'Archived', content: '', sourceType: 'URL', archivedAt: new Date() },
+    })
+    const items = await listAllItems(prisma)
+    assert.deepEqual(items.map(item => item.title), ['Active'])
+  })
+})
+
+describe('archiveItem', () => {
+  it('rejects soft-deleted items without setting archivedAt', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Soft deleted', content: '', sourceType: 'URL', deletedAt: new Date() },
+    })
+    await assert.rejects(() => archiveItem(prisma, item.id), assertNotFoundTrpcError)
+    const raw = await prisma.readingItem.findUnique({ where: { id: item.id } })
+    assert.equal(raw?.archivedAt, null)
+  })
+
+  it('sets archivedAt and hides item from listDueItems and listAllItems', async () => {
+    const past = new Date(Date.now() - 1000)
+    const item = await prisma.readingItem.create({
+      data: { title: 'Wiki', content: '', sourceType: 'WIKIPEDIA', due: past },
+    })
+    const archived = await archiveItem(prisma, item.id)
+    assert.ok(archived.archivedAt instanceof Date)
+    const due = await listDueItems(prisma)
+    const all = await listAllItems(prisma)
+    assert.equal(due.length, 0)
+    assert.equal(all.length, 0)
+  })
+})
+
+describe('unarchiveItem', () => {
+  it('rejects soft-deleted items without clearing archivedAt', async () => {
+    const archivedAt = new Date()
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Soft deleted archived',
+        content: '',
+        sourceType: 'URL',
+        archivedAt,
+        deletedAt: new Date(),
+      },
+    })
+    await assert.rejects(() => unarchiveItem(prisma, item.id), assertNotFoundTrpcError)
+    const raw = await prisma.readingItem.findUnique({ where: { id: item.id } })
+    assert.ok(raw?.archivedAt instanceof Date)
+    assert.equal(raw?.archivedAt?.getTime(), archivedAt.getTime())
+  })
+
+  it('clears archivedAt and restores past-due item to listDueItems', async () => {
+    const past = new Date(Date.now() - 1000)
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Archived',
+        content: '',
+        sourceType: 'URL',
+        due: past,
+        archivedAt: new Date(),
+      },
+    })
+    const restored = await unarchiveItem(prisma, item.id)
+    assert.equal(restored.archivedAt, null)
+    const due = await listDueItems(prisma)
+    assert.equal(due.length, 1)
+    assert.equal(due[0].id, item.id)
+  })
+})
+
+describe('deleteItem', () => {
+  it('permanently removes the row and returns the deleted item', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Gone', content: '', sourceType: 'URL' },
+    })
+    const deleted = await deleteItem(prisma, item.id)
+    assert.equal(deleted.id, item.id)
+    assert.equal(deleted.title, 'Gone')
+    const raw = await prisma.readingItem.findUnique({ where: { id: item.id } })
+    assert.equal(raw, null)
+  })
+
+  it('rejects soft-deleted items without removing the row', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Soft deleted', content: '', sourceType: 'URL', deletedAt: new Date() },
+    })
+    await assert.rejects(() => deleteItem(prisma, item.id), assertNotFoundTrpcError)
+    const raw = await prisma.readingItem.findUnique({ where: { id: item.id } })
+    assert.ok(raw)
+  })
+})
+
+const missingReadingItemId = '00000000-0000-0000-0000-000000000000'
+
+function assertNotFoundTrpcError(err: unknown): boolean {
+  assert.ok(err instanceof TRPCError)
+  assert.equal(err.code, 'NOT_FOUND')
+  assert.equal(err.message, 'Reading item not found')
+  return true
+}
+
+describe('reading item NOT_FOUND contract', () => {
+  it('archiveItem rejects missing id', async () => {
+    await assert.rejects(() => archiveItem(prisma, missingReadingItemId), assertNotFoundTrpcError)
+  })
+
+  it('unarchiveItem rejects missing id', async () => {
+    await assert.rejects(() => unarchiveItem(prisma, missingReadingItemId), assertNotFoundTrpcError)
+  })
+
+  it('deleteItem rejects missing id', async () => {
+    await assert.rejects(() => deleteItem(prisma, missingReadingItemId), assertNotFoundTrpcError)
+  })
+
+  it('hidePassage rejects missing id', async () => {
+    await assert.rejects(
+      () => hidePassage(prisma, missingReadingItemId, 'text'),
+      assertNotFoundTrpcError
+    )
+  })
+
+  it('restorePassage rejects missing id', async () => {
+    await assert.rejects(
+      () => restorePassage(prisma, missingReadingItemId, 'text'),
+      assertNotFoundTrpcError
+    )
+  })
+})
+
+describe('bulkArchive', () => {
+  it('ignores soft-deleted IDs in count and leaves them unchanged', async () => {
+    const active = await prisma.readingItem.create({
+      data: { title: 'Active', content: '', sourceType: 'URL' },
+    })
+    const softDeleted = await prisma.readingItem.create({
+      data: { title: 'Soft deleted', content: '', sourceType: 'URL', deletedAt: new Date() },
+    })
+    const count = await bulkArchive(prisma, [active.id, softDeleted.id])
+    assert.equal(count, 1)
+    const activeRaw = await prisma.readingItem.findUnique({ where: { id: active.id } })
+    const softRaw = await prisma.readingItem.findUnique({ where: { id: softDeleted.id } })
+    assert.ok(activeRaw?.archivedAt instanceof Date)
+    assert.equal(softRaw?.archivedAt, null)
+  })
+
+  it('archives matching items and returns count', async () => {
+    const a = await prisma.readingItem.create({
+      data: { title: 'A', content: '', sourceType: 'URL' },
+    })
+    const b = await prisma.readingItem.create({
+      data: { title: 'B', content: '', sourceType: 'URL' },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'C', content: '', sourceType: 'URL' },
+    })
+    const count = await bulkArchive(prisma, [a.id, b.id])
+    assert.equal(count, 2)
+    const all = await listAllItems(prisma)
+    assert.deepEqual(all.map(item => item.title), ['C'])
+  })
+})
+
+describe('bulkDelete', () => {
+  it('permanently deletes matching rows and returns count', async () => {
+    const a = await prisma.readingItem.create({
+      data: { title: 'A', content: '', sourceType: 'URL' },
+    })
+    const b = await prisma.readingItem.create({
+      data: { title: 'B', content: '', sourceType: 'URL' },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'C', content: '', sourceType: 'URL' },
+    })
+    const count = await bulkDelete(prisma, [a.id, b.id])
+    assert.equal(count, 2)
+    const remaining = await prisma.readingItem.count()
+    assert.equal(remaining, 1)
+  })
+})
+
+describe('getItemById', () => {
+  it('returns active item', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Active', content: '', sourceType: 'URL' },
+    })
+    const found = await getItemById(prisma, item.id)
+    assert.equal(found?.id, item.id)
+    assert.equal(found?.archivedAt, null)
+  })
+
+  it('returns archived item', async () => {
+    const archivedAt = new Date()
+    const item = await prisma.readingItem.create({
+      data: { title: 'Archived', content: '', sourceType: 'URL', archivedAt },
+    })
+    const found = await getItemById(prisma, item.id)
+    assert.equal(found?.id, item.id)
+    assert.ok(found?.archivedAt instanceof Date)
+    assert.equal(found?.archivedAt?.getTime(), archivedAt.getTime())
+  })
+
+  it('returns null for soft-deleted item', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Deleted', content: '', sourceType: 'URL', deletedAt: new Date() },
+    })
+    const found = await getItemById(prisma, item.id)
+    assert.equal(found, null)
+  })
+
+  it('returns null for hard-deleted item', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Gone', content: '', sourceType: 'URL' },
+    })
+    await deleteItem(prisma, item.id)
+    const found = await getItemById(prisma, item.id)
+    assert.equal(found, null)
+  })
+
+  it('returns null for missing id', async () => {
+    const found = await getItemById(prisma, '00000000-0000-0000-0000-000000000000')
+    assert.equal(found, null)
+  })
+})
+
+describe('listArchivedItems', () => {
+  it('returns archived items ordered by archivedAt desc', async () => {
+    const t1 = new Date(Date.now() - 2000)
+    const t2 = new Date(Date.now() - 1000)
+    await prisma.readingItem.create({
+      data: { title: 'Older', content: '', sourceType: 'URL', archivedAt: t1 },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'Newer', content: '', sourceType: 'URL', archivedAt: t2 },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'Active', content: '', sourceType: 'URL' },
+    })
+    const items = await listArchivedItems(prisma)
+    assert.equal(items.length, 2)
+    assert.deepEqual(items.map(item => item.title), ['Newer', 'Older'])
+  })
+
+  it('excludes soft-deleted archived items', async () => {
+    await prisma.readingItem.create({
+      data: {
+        title: 'Deleted archived',
+        content: '',
+        sourceType: 'URL',
+        archivedAt: new Date(),
+        deletedAt: new Date(),
+      },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'Still archived', content: '', sourceType: 'URL', archivedAt: new Date() },
+    })
+    const items = await listArchivedItems(prisma)
+    assert.deepEqual(items.map(item => item.title), ['Still archived'])
+  })
+
+  it('filters by sourceType', async () => {
+    await prisma.readingItem.create({
+      data: { title: 'Wiki archived', content: '', sourceType: 'WIKIPEDIA', archivedAt: new Date() },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'Url archived', content: '', sourceType: 'URL', archivedAt: new Date() },
+    })
+    const items = await listArchivedItems(prisma, { sourceType: 'WIKIPEDIA' })
+    assert.deepEqual(items.map(item => item.title), ['Wiki archived'])
+  })
+})
+
+describe('getImportedWikipediaUrls', () => {
+  it('returns map of articleUrl to { id, archivedAt } for active and archived, excludes deleted', async () => {
+    const active = await prisma.readingItem.create({
+      data: {
+        title: 'Active Wiki',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: 'https://en.wikipedia.org/wiki/Active',
+      },
+    })
+    const archivedAt = new Date()
+    const archived = await prisma.readingItem.create({
+      data: {
+        title: 'Archived Wiki',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: 'https://en.wikipedia.org/wiki/Archived',
+        archivedAt,
+      },
+    })
+    await prisma.readingItem.create({
+      data: {
+        title: 'Deleted Wiki',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: 'https://en.wikipedia.org/wiki/Deleted',
+        deletedAt: new Date(),
+      },
+    })
+    await prisma.readingItem.create({
+      data: { title: 'No URL', content: '', sourceType: 'WIKIPEDIA' },
+    })
+    const map = await getImportedWikipediaUrls(prisma)
+    assert.ok('https://en.wikipedia.org/wiki/Active' in map)
+    assert.equal(map['https://en.wikipedia.org/wiki/Active'].id, active.id)
+    assert.equal(map['https://en.wikipedia.org/wiki/Active'].archivedAt, null)
+    assert.ok('https://en.wikipedia.org/wiki/Archived' in map)
+    assert.equal(map['https://en.wikipedia.org/wiki/Archived'].id, archived.id)
+    assert.ok(map['https://en.wikipedia.org/wiki/Archived'].archivedAt instanceof Date)
+    assert.equal(
+      map['https://en.wikipedia.org/wiki/Archived'].archivedAt?.getTime(),
+      archivedAt.getTime()
+    )
+    assert.ok(!('https://en.wikipedia.org/wiki/Deleted' in map))
+  })
+
+  it('excludes hard-deleted Wikipedia items', async () => {
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Hard deleted',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: 'https://en.wikipedia.org/wiki/HardDeleted',
+      },
+    })
+    await deleteItem(prisma, item.id)
+    const map = await getImportedWikipediaUrls(prisma)
+    assert.ok(!('https://en.wikipedia.org/wiki/HardDeleted' in map))
+  })
+
+  it('prefers active item over archived duplicate for the same articleUrl', async () => {
+    const url = 'https://en.wikipedia.org/wiki/Duplicate'
+    await prisma.readingItem.create({
+      data: {
+        title: 'Archived section',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: url,
+        archivedAt: new Date(),
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      },
+    })
+    const active = await prisma.readingItem.create({
+      data: {
+        title: 'Active section',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: url,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    })
+    const map = await getImportedWikipediaUrls(prisma)
+    assert.equal(map[url].id, active.id)
+    assert.equal(map[url].archivedAt, null)
+  })
+
+  it('prefers newest createdAt among duplicate active items for the same articleUrl', async () => {
+    const url = 'https://en.wikipedia.org/wiki/MultiActive'
+    await prisma.readingItem.create({
+      data: {
+        title: 'Older section',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: url,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    })
+    const newer = await prisma.readingItem.create({
+      data: {
+        title: 'Newer section',
+        content: '',
+        sourceType: 'WIKIPEDIA',
+        articleUrl: url,
+        createdAt: new Date('2026-01-03T00:00:00.000Z'),
+      },
+    })
+    const map = await getImportedWikipediaUrls(prisma)
+    assert.equal(map[url].id, newer.id)
+    assert.equal(map[url].archivedAt, null)
   })
 })
 
@@ -292,6 +704,31 @@ describe('resolveWikipediaFetchTarget', () => {
   })
 })
 
+describe('mergeWikipediaSections', () => {
+  it('keeps Introduction as lead without a heading', () => {
+    const merged = mergeWikipediaSections(
+      [
+        { sectionTitle: 'Introduction', content: 'Lead text.', articleUrl: 'https://en.wikipedia.org/wiki/X' },
+        { sectionTitle: 'Structure', content: 'Body text.', articleUrl: 'https://en.wikipedia.org/wiki/X' },
+      ],
+      'Article',
+      'https://en.wikipedia.org/wiki/X'
+    )
+    assert.equal(merged.title, 'Article')
+    assert.equal(merged.articleUrl, 'https://en.wikipedia.org/wiki/X')
+    assert.equal(merged.content, 'Lead text.\n\n## Structure\n\nBody text.')
+  })
+
+  it('prefixes non-introduction sections with markdown headings', () => {
+    const merged = mergeWikipediaSections(
+      [{ sectionTitle: 'History', content: 'Past events.', articleUrl: 'https://en.wikipedia.org/wiki/Y' }],
+      'Y',
+      'https://en.wikipedia.org/wiki/Y'
+    )
+    assert.equal(merged.content, '## History\n\nPast events.')
+  })
+})
+
 describe('fetchWikipediaForReading', () => {
   const originalFetch = global.fetch
 
@@ -299,49 +736,70 @@ describe('fetchWikipediaForReading', () => {
     global.fetch = originalFetch
   })
 
-  it('fetches sections when resolved from { url } (mocked HTTP)', async () => {
+  it('returns a single merged article object', async () => {
+    global.fetch = async () =>
+      new Response(JSON.stringify(mockWikipediaParseResponse), { status: 200 })
+
+    const result = await fetchWikipediaForReading('Mitochondrion')
+    assert.equal(result.title, 'Mitochondrion')
+    assert.ok(typeof result.content === 'string')
+    assert.ok(result.content.includes('## Structure'))
+    assert.equal(result.articleUrl, 'https://en.wikipedia.org/wiki/Mitochondrion')
+  })
+
+  it('returns merged content from mobile-sections fixture via URL', async () => {
     global.fetch = async () =>
       new Response(JSON.stringify(mockWikipediaResponse), { status: 200 })
 
     const target = resolveWikipediaFetchTarget({
       url: 'https://en.wikipedia.org/wiki/Mitochondria',
     })
-    const sections = await fetchWikipediaForReading(target)
-    assert.equal(sections.length, 2)
-    assert.equal(sections[0].sectionTitle, 'Introduction')
-  })
-
-  it('fetches sections from a Wikipedia URL (mocked HTTP)', async () => {
-    global.fetch = async () =>
-      new Response(JSON.stringify(mockWikipediaResponse), { status: 200 })
-
-    const sections = await fetchWikipediaForReading(
-      'https://en.wikipedia.org/wiki/Mitochondria'
-    )
-    assert.equal(sections.length, 2)
-    assert.equal(sections[0].sectionTitle, 'Introduction')
-    assert.equal(sections[0].title, 'Introduction')
-    assert.ok(sections[0].content.includes('mitochondrion'))
-    assert.equal(sections[0].articleUrl, 'https://en.wikipedia.org/wiki/Mitochondria')
-    assert.equal(sections[1].sectionTitle, 'Structure')
+    const result = await fetchWikipediaForReading(target)
+    assert.equal(result.title, 'Mitochondria')
+    assert.ok(result.content.includes('mitochondrion'))
+    assert.ok(result.content.includes('## Structure'))
+    assert.equal(result.articleUrl, 'https://en.wikipedia.org/wiki/Mitochondria')
   })
 
   it('accepts a plain article title', async () => {
     global.fetch = async () =>
       new Response(JSON.stringify(mockWikipediaResponse), { status: 200 })
 
-    const sections = await fetchWikipediaForReading('Mitochondria')
-    assert.equal(sections.length, 2)
+    const result = await fetchWikipediaForReading('Mitochondria')
+    assert.ok(result.content.includes('mitochondrion'))
+    assert.equal(result.articleUrl, 'https://en.wikipedia.org/wiki/Mitochondria')
   })
 
-  it('absolutizes Wikipedia-relative links in parsed article content', async () => {
+  it('canonicalizes articleUrl from URL with fragment', async () => {
+    global.fetch = async () =>
+      new Response(JSON.stringify(mockWikipediaResponse), { status: 200 })
+
+    const result = await fetchWikipediaForReading(
+      'https://en.wikipedia.org/wiki/Mitochondria#Structure'
+    )
+    assert.equal(result.articleUrl, 'https://en.wikipedia.org/wiki/Mitochondria')
+    assert.ok(!result.articleUrl.includes('#'))
+  })
+
+  it('canonicalizes articleUrl from URL with query string', async () => {
+    global.fetch = async () =>
+      new Response(JSON.stringify(mockWikipediaResponse), { status: 200 })
+
+    const result = await fetchWikipediaForReading(
+      'https://en.wikipedia.org/wiki/Mitochondria?oldid=12345'
+    )
+    assert.equal(result.articleUrl, 'https://en.wikipedia.org/wiki/Mitochondria')
+    assert.ok(!result.articleUrl.includes('?'))
+  })
+
+  it('absolutizes Wikipedia-relative links', async () => {
     global.fetch = async () =>
       new Response(JSON.stringify(mockWikipediaParseResponse), { status: 200 })
 
-    const sections = await fetchWikipediaForReading('Mitochondrion')
-    assert.ok(sections[0].content.includes('https://en.wikipedia.org/wiki/Organelle'))
-    assert.ok(sections[1].content.includes('https://en.wikipedia.org/wiki/Cell'))
-    assert.ok(!sections.some(section => section.content.includes('](/wiki/')))
+    const result = await fetchWikipediaForReading('Mitochondrion')
+    assert.ok(result.content.includes('https://en.wikipedia.org/wiki/Organelle'))
+    assert.ok(result.content.includes('https://en.wikipedia.org/wiki/Cell'))
+    assert.ok(!result.content.includes('](/wiki/'))
   })
 
   it('throws on 404 with a descriptive message', async () => {
@@ -366,32 +824,23 @@ describe('fetchWikipediaForReading', () => {
 })
 
 describe('addWikipediaToQueue', () => {
-  it('creates one ReadingItem per section with WIKIPEDIA_SECTION', async () => {
+  it('creates one ReadingItem with sourceType WIKIPEDIA and articleUrl set', async () => {
     const articleUrl = 'https://en.wikipedia.org/wiki/Mitochondria'
-    const items = await addWikipediaToQueue(prisma, [
-      {
-        title: 'Introduction',
-        content: 'Lead paragraph.',
-        articleUrl,
-        sectionTitle: 'Introduction',
-      },
-      {
-        title: 'Structure',
-        content: 'Inner membrane.',
-        articleUrl,
-        sectionTitle: 'Structure',
-      },
-    ])
+    const item = await addWikipediaToQueue(prisma, {
+      title: 'Mitochondria',
+      content: '## Introduction\n\nLead paragraph.\n\n## Structure\n\nInner membrane.',
+      articleUrl,
+    })
 
-    assert.equal(items.length, 2)
-    assert.equal(items[0].sourceType, 'WIKIPEDIA_SECTION')
-    assert.equal(items[0].articleUrl, articleUrl)
-    assert.equal(items[0].sectionTitle, 'Introduction')
-    assert.equal(items[0].url, articleUrl)
-    assert.equal(items[1].sectionTitle, 'Structure')
+    assert.equal(item.sourceType, 'WIKIPEDIA')
+    assert.equal(item.articleUrl, articleUrl)
+    assert.equal(item.url, articleUrl)
+    assert.equal(item.title, 'Mitochondria')
+    assert.ok(item.content.includes('Introduction'))
+    assert.ok(item.content.includes('Structure'))
 
-    const count = await prisma.readingItem.count({ where: { sourceType: 'WIKIPEDIA_SECTION' } })
-    assert.equal(count, 2)
+    const count = await prisma.readingItem.count({ where: { sourceType: 'WIKIPEDIA' } })
+    assert.equal(count, 1)
   })
 })
 
@@ -512,6 +961,114 @@ describe('addUrlToQueue', () => {
     )
     const count = await prisma.readingItem.count()
     assert.equal(count, 0)
+  })
+})
+
+describe('hidePassage', () => {
+  it('appends passage to hiddenPassages JSON array', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Article', content: 'The sky is blue. The grass is green.', sourceType: 'URL' },
+    })
+    const updated = await hidePassage(prisma, item.id, 'The sky is blue.')
+    const passages = JSON.parse(updated.hiddenPassages) as string[]
+    assert.deepEqual(passages, ['The sky is blue.'])
+    const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
+    assert.deepEqual(JSON.parse(raw.hiddenPassages) as string[], ['The sky is blue.'])
+  })
+
+  it('accumulates multiple hidden passages', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Article', content: 'A. B. C.', sourceType: 'URL' },
+    })
+    await hidePassage(prisma, item.id, 'A.')
+    const updated = await hidePassage(prisma, item.id, 'B.')
+    const passages = JSON.parse(updated.hiddenPassages) as string[]
+    assert.deepEqual(passages, ['A.', 'B.'])
+  })
+
+  it('rejects soft-deleted items without mutating hiddenPassages', async () => {
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Deleted',
+        content: 'body',
+        sourceType: 'URL',
+        hiddenPassages: '["keep"]',
+        deletedAt: new Date(),
+      },
+    })
+    await assert.rejects(() => hidePassage(prisma, item.id, 'new'), assertNotFoundTrpcError)
+    const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
+    assert.equal(raw.hiddenPassages, '["keep"]')
+  })
+
+  it('rejects malformed or non-string-array hiddenPassages without mutating', async () => {
+    for (const hiddenPassages of ['not json', '{"x":1}', '[1]']) {
+      const item = await prisma.readingItem.create({
+        data: { title: 'Bad', content: '', sourceType: 'URL', hiddenPassages },
+      })
+      await assert.rejects(() => hidePassage(prisma, item.id, 'x'), /hiddenPassages/i)
+      const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
+      assert.equal(raw.hiddenPassages, hiddenPassages)
+    }
+  })
+})
+
+describe('restorePassage', () => {
+  it('removes the first matching passage from hiddenPassages', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Article', content: 'A. B.', sourceType: 'URL', hiddenPassages: '["A.","B."]' },
+    })
+    const updated = await restorePassage(prisma, item.id, 'A.')
+    const passages = JSON.parse(updated.hiddenPassages) as string[]
+    assert.deepEqual(passages, ['B.'])
+  })
+
+  it('removes only the first occurrence when text appears twice', async () => {
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Article',
+        content: 'dup',
+        sourceType: 'URL',
+        hiddenPassages: '["dup","other","dup"]',
+      },
+    })
+    const updated = await restorePassage(prisma, item.id, 'dup')
+    assert.deepEqual(JSON.parse(updated.hiddenPassages) as string[], ['other', 'dup'])
+  })
+
+  it('returns unchanged item when text is not in hiddenPassages', async () => {
+    const item = await prisma.readingItem.create({
+      data: { title: 'Article', content: 'A.', sourceType: 'URL', hiddenPassages: '["A."]' },
+    })
+    const updated = await restorePassage(prisma, item.id, 'missing')
+    assert.deepEqual(JSON.parse(updated.hiddenPassages) as string[], ['A.'])
+    assert.equal(updated.id, item.id)
+  })
+
+  it('rejects soft-deleted items without mutating hiddenPassages', async () => {
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Deleted',
+        content: 'body',
+        sourceType: 'URL',
+        hiddenPassages: '["A.","B."]',
+        deletedAt: new Date(),
+      },
+    })
+    await assert.rejects(() => restorePassage(prisma, item.id, 'A.'), assertNotFoundTrpcError)
+    const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
+    assert.equal(raw.hiddenPassages, '["A.","B."]')
+  })
+
+  it('rejects malformed or non-string-array hiddenPassages without mutating', async () => {
+    for (const hiddenPassages of ['not json', '{"x":1}', '[1]']) {
+      const item = await prisma.readingItem.create({
+        data: { title: 'Bad', content: '', sourceType: 'URL', hiddenPassages },
+      })
+      await assert.rejects(() => restorePassage(prisma, item.id, 'x'), /hiddenPassages/i)
+      const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
+      assert.equal(raw.hiddenPassages, hiddenPassages)
+    }
   })
 })
 

@@ -29,6 +29,16 @@ export const noteRouter = router({
       })
     ),
 
+  listByReadingItem: protectedProcedure
+    .input(z.string()) // readingItemId
+    .query(({ input }) =>
+      prisma.note.findMany({
+        where: { sourceReadingItemId: input },
+        select: { id: true, title: true, slug: true },
+        orderBy: { createdAt: 'desc' },
+      })
+    ),
+
   create: protectedProcedure
     .input(z.object({ title: z.string().min(1) }))
     .mutation(async ({ input }) => {

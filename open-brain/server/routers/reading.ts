@@ -1,3 +1,4 @@
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
@@ -6,21 +7,30 @@ import {
   addNoteToQueue,
   addUrlToQueue,
   addWikipediaToQueue,
+  archiveItem,
+  bulkArchive,
+  bulkDelete,
+  deleteItem,
   extractPassage,
   fetchWikipediaForReading,
+  getImportedWikipediaUrls,
+  getItemById,
+  hidePassage,
   listAllItems,
+  listArchivedItems,
   listDueItems,
   previewUrlFromFetch,
   resolveWikipediaFetchTarget,
+  restorePassage,
   reviewReadingItem,
   terminateAsNote,
+  unarchiveItem,
 } from '@/lib/readingQueue'
 
-const wikipediaSectionInput = z.object({
+const wikipediaArticleInput = z.object({
   title: z.string().min(1),
   content: z.string(),
   articleUrl: z.string().url(),
-  sectionTitle: z.string().min(1),
 })
 
 /** Wikipedia URL or article title; `url` is canonical, `input` is legacy. */
@@ -34,7 +44,7 @@ const wikipediaFetchInput = z
   })
 
 const ratingSchema = z.enum(['Again', 'Hard', 'Good', 'Easy'])
-const sourceTypeSchema = z.enum(['NOTE', 'URL', 'WIKIPEDIA_SECTION', 'EXTRACT'])
+const sourceTypeSchema = z.enum(['NOTE', 'URL', 'WIKIPEDIA', 'EXTRACT'])
 const fsrsStateSchema = z.enum(['NEW', 'LEARNING', 'REVIEW', 'RELEARNING'])
 
 export const readingRouter = router({
@@ -62,7 +72,7 @@ export const readingRouter = router({
     .query(({ input }) => fetchWikipediaForReading(resolveWikipediaFetchTarget(input))),
 
   addWikipedia: protectedProcedure
-    .input(z.array(wikipediaSectionInput).min(1))
+    .input(wikipediaArticleInput)
     .mutation(({ input }) => addWikipediaToQueue(prisma, input)),
 
   previewUrl: protectedProcedure
@@ -105,4 +115,50 @@ export const readingRouter = router({
       void syncNoteToFts(note.id, note.title, note.body ?? '')
       return note
     }),
+
+  archive: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => archiveItem(prisma, input.id)),
+
+  unarchive: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => unarchiveItem(prisma, input.id)),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => deleteItem(prisma, input.id)),
+
+  bulkArchive: protectedProcedure
+    .input(z.object({ ids: z.array(z.string()).min(1) }))
+    .mutation(({ input }) => bulkArchive(prisma, input.ids)),
+
+  bulkDelete: protectedProcedure
+    .input(z.object({ ids: z.array(z.string()).min(1) }))
+    .mutation(({ input }) => bulkDelete(prisma, input.ids)),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const item = await getItemById(prisma, input.id)
+      if (!item) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Reading item not found' })
+      }
+      return item
+    }),
+
+  listArchived: protectedProcedure
+    .input(z.object({ sourceType: sourceTypeSchema.optional() }).optional())
+    .query(({ input }) => listArchivedItems(prisma, input)),
+
+  getImportedWikipediaUrls: protectedProcedure.query(() =>
+    getImportedWikipediaUrls(prisma)
+  ),
+
+  hidePassage: protectedProcedure
+    .input(z.object({ id: z.string(), text: z.string().min(1) }))
+    .mutation(({ input }) => hidePassage(prisma, input.id, input.text)),
+
+  restorePassage: protectedProcedure
+    .input(z.object({ id: z.string(), text: z.string().min(1) }))
+    .mutation(({ input }) => restorePassage(prisma, input.id, input.text)),
 })

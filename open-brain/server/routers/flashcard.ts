@@ -13,6 +13,16 @@ export const flashcardRouter = router({
       })
     }),
 
+  listByReadingItem: protectedProcedure
+    .input(z.string()) // readingItemId
+    .query(({ input }) =>
+      prisma.flashcard.findMany({
+        where: { sourceReadingItemId: input, deletedAt: null },
+        select: { id: true, front: true },
+        orderBy: { createdAt: 'desc' },
+      })
+    ),
+
   create: protectedProcedure
     .input(
       z.object({

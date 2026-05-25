@@ -19,6 +19,18 @@ export function extractWikipediaTitleFromUrl(url: string): string | null {
   }
 }
 
+/** Wiki page slug from a URL (fragment/query ignored) or plain title (spaces → underscores). */
+export function wikipediaSlugFromTitleOrUrl(titleOrUrl: string): string | null {
+  const trimmed = titleOrUrl.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('http')) return extractWikipediaTitleFromUrl(trimmed)
+  return trimmed.replace(/ /g, '_')
+}
+
+export function canonicalWikipediaArticleUrl(slug: string): string {
+  return `https://en.wikipedia.org/wiki/${encodeURIComponent(slug)}`
+}
+
 interface ParseSection {
   toclevel: number
   level?: string
@@ -229,4 +241,17 @@ export async function fetchWikipediaSections(
   }
   const articleUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`
   return parseWikipediaSections(data, articleUrl)
+}
+
+export function mergeWikipediaSections(
+  sections: WikipediaSection[],
+  articleTitle: string,
+  articleUrl: string
+): { title: string; content: string; articleUrl: string } {
+  const content = sections
+    .map(s =>
+      s.sectionTitle === 'Introduction' ? s.content : `## ${s.sectionTitle}\n\n${s.content}`
+    )
+    .join('\n\n')
+  return { title: articleTitle, content, articleUrl }
 }

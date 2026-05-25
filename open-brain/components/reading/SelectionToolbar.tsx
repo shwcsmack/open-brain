@@ -7,6 +7,7 @@ interface Props {
   onExtract: (text: string) => void
   onSaveAsNote: (text: string) => void
   onCreateFlashcard: (text: string) => void
+  onDeletePassage: (text: string) => void
 }
 
 interface Position {
@@ -19,6 +20,7 @@ export function SelectionToolbar({
   onExtract,
   onSaveAsNote,
   onCreateFlashcard,
+  onDeletePassage,
 }: Props) {
   const [selectedText, setSelectedText] = useState('')
   const [position, setPosition] = useState<Position | null>(null)
@@ -110,6 +112,18 @@ export function SelectionToolbar({
         }}
       >
         Flashcard
+      </Button>
+      <Button
+        size="sm"
+        variant="destructive"
+        className="h-7 px-2 text-xs"
+        aria-label="Delete passage"
+        onClick={() => {
+          onDeletePassage(selectedText)
+          dismissSelection()
+        }}
+      >
+        Delete passage
       </Button>
     </div>
   )
