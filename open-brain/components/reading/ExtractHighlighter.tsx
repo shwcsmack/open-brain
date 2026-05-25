@@ -35,6 +35,19 @@ function isWikipediaUrl(href: string): boolean {
   }
 }
 
+export function isWikipediaFileUrl(href: string): boolean {
+  try {
+    const u = new URL(href)
+    if (!u.hostname.endsWith('wikipedia.org')) return false
+    const parts = u.pathname.split('/')
+    const wikiIdx = parts.indexOf('wiki')
+    if (wikiIdx === -1 || wikiIdx + 1 >= parts.length) return false
+    return /^File:/i.test(decodeURIComponent(parts[wikiIdx + 1]))
+  } catch {
+    return false
+  }
+}
+
 function isEnglishWikipediaHost(hostname: string): boolean {
   return hostname === 'en.wikipedia.org' || hostname === 'en.m.wikipedia.org'
 }
@@ -136,7 +149,7 @@ function markExtracts(markdown: string, extracts: string[]): string {
   return result
 }
 
-function markHiddenPassages(
+export function markHiddenPassages(
   markdown: string,
   passages: string[]
 ): { md: string; restoreMap: Record<string, string[]> } {
@@ -152,8 +165,10 @@ function markHiddenPassages(
   for (const text of passages) {
     const normalized = text.replace(/\s+/g, ' ').trim()
     if (!normalized) continue
-    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const re = new RegExp(escaped, 'gi')
+    const escapedText = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // Selection text collapses whitespace to single spaces; markdown may use \n\n etc.
+    const regexStr = escapedText.replace(/ /g, '\\s+')
+    const re = new RegExp(regexStr, 'gi')
     let match: RegExpExecArray | null
     while ((match = re.exec(markdown)) !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length, text })
@@ -227,9 +242,9 @@ function WikipediaLinkWithPill({
     <button
       type="button"
       onClick={onAction}
-      className={`not-prose inline-flex min-h-6 min-w-6 cursor-pointer items-center gap-1 rounded-sm border border-transparent bg-transparent p-0 text-primary underline ${FOCUS_RING}`}
+      className={`not-prose select-text inline-flex min-h-6 min-w-6 cursor-pointer items-center gap-1 rounded-sm border border-transparent bg-transparent p-0 text-primary underline ${FOCUS_RING}`}
     >
-      <span className="underline">{children}</span>
+      <span className="underline select-text">{children}</span>
       <span className="sr-only">{wikipediaActionSuffix(state)}</span>
       <span className={pillClassName} aria-hidden="true">
         {pillLabel}
@@ -316,7 +331,7 @@ export function ExtractHighlighter({
               return <span>{children}</span>
             }
 
-            const wiki = href && isWikipediaUrl(href)
+            const wiki = href && isWikipediaUrl(href) && !isWikipediaFileUrl(href)
             if (wiki && onAddWikipediaLink && href) {
               const importState = lookupWikipediaImport(href, importedWikipediaUrls)
               const pillState = importState
