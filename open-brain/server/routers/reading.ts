@@ -155,10 +155,24 @@ export const readingRouter = router({
   ),
 
   hidePassage: protectedProcedure
-    .input(z.object({ id: z.string(), text: z.string().min(1) }))
-    .mutation(({ input }) => hidePassage(prisma, input.id, input.text)),
+    .input(
+      z.object({
+        id: z.string(),
+        start: z.number().int().nonnegative(),
+        end: z.number().int().positive(),
+      })
+    )
+    .mutation(({ input }) => hidePassage(prisma, input.id, input.start, input.end)),
 
   restorePassage: protectedProcedure
-    .input(z.object({ id: z.string(), text: z.string().min(1) }))
-    .mutation(({ input }) => restorePassage(prisma, input.id, input.text)),
+    .input(
+      z.object({
+        id: z.string(),
+        start: z.number().int().nonnegative(),
+        end: z.number().int().positive(),
+      })
+    )
+    .mutation(({ input }) =>
+      restorePassage(prisma, input.id, input.start, input.end)
+    ),
 })

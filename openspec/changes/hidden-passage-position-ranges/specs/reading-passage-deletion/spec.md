@@ -5,9 +5,11 @@
 The system SHALL add a fourth action — **Delete passage** — to the text selection toolbar in
 the reading session. When the user selects text and clicks "Delete passage", the system SHALL
 compute the plain-text character offsets (`start` and `end`) of the selection within the
-reading content container, call `reading.hidePassage` with the current item's id and those
-offsets, and optimistically re-render the article content with the passage replaced by a
-tombstone placeholder.
+reading content container in the same coordinate space used by markdown plain-text mapping,
+call `reading.hidePassage` with the current item's id and those offsets, and optimistically
+re-render the article content with the passage replaced by a tombstone placeholder. UI-only
+text added by controls SHALL NOT contribute to those offsets, and visible tombstones SHALL
+contribute the original plain-text length of the hidden range they replaced.
 
 #### Scenario: Delete passage hides text and shows tombstone
 - **WHEN** the user selects a passage and clicks "Delete passage" in the toolbar

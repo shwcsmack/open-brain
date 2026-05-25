@@ -1,13 +1,19 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  computePassageRangeFromSelection,
+  tryGetPlainTextOffset,
+} from '@/components/reading/plainTextOffset'
+
+export { getPlainTextOffset, tryGetPlainTextOffset } from '@/components/reading/plainTextOffset'
 
 interface Props {
   contentId: string
   onExtract: (text: string) => void
   onSaveAsNote: (text: string) => void
   onCreateFlashcard: (text: string) => void
-  onDeletePassage: (text: string) => void
+  onDeletePassage: (start: number, end: number) => void
 }
 
 interface Position {
@@ -23,6 +29,7 @@ export function SelectionToolbar({
   onDeletePassage,
 }: Props) {
   const [selectedText, setSelectedText] = useState('')
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null)
   const [position, setPosition] = useState<Position | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
@@ -31,6 +38,7 @@ export function SelectionToolbar({
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed || !sel.toString().trim()) {
         setSelectedText('')
+        setSelectionRange(null)
         setPosition(null)
         return
       }
@@ -40,12 +48,22 @@ export function SelectionToolbar({
       const range = sel.getRangeAt(0)
       if (!contentEl.contains(range.commonAncestorContainer)) {
         setSelectedText('')
+        setSelectionRange(null)
+        setPosition(null)
+        return
+      }
+
+      const passageRange = computePassageRangeFromSelection(contentEl, range)
+      if (!passageRange) {
+        setSelectedText('')
+        setSelectionRange(null)
         setPosition(null)
         return
       }
 
       const rect = range.getBoundingClientRect()
       setSelectedText(sel.toString().trim())
+      setSelectionRange(passageRange)
       setPosition({
         top: rect.top + window.scrollY - 48,
         left: rect.left + rect.width / 2,
@@ -63,10 +81,28 @@ export function SelectionToolbar({
   function dismissSelection() {
     window.getSelection()?.removeAllRanges()
     setSelectedText('')
+    setSelectionRange(null)
     setPosition(null)
   }
 
-  if (!position || !selectedText) return null
+  function handleDeletePassage() {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+
+    const contentEl = document.getElementById(contentId)
+    if (!contentEl) return
+
+    const range = sel.getRangeAt(0)
+    if (!contentEl.contains(range.commonAncestorContainer)) return
+
+    const passageRange = computePassageRangeFromSelection(contentEl, range)
+    if (!passageRange) return
+
+    onDeletePassage(passageRange.start, passageRange.end)
+    dismissSelection()
+  }
+
+  if (!position || !selectedText || !selectionRange) return null
 
   return (
     <div
@@ -118,10 +154,7 @@ export function SelectionToolbar({
         variant="destructive"
         className="h-7 px-2 text-xs"
         aria-label="Delete passage"
-        onClick={() => {
-          onDeletePassage(selectedText)
-          dismissSelection()
-        }}
+        onClick={handleDeletePassage}
       >
         Delete passage
       </Button>

@@ -4,7 +4,7 @@
 
 **Goal:** Replace text-based hidden passage storage with plain-text character offset pairs so that exactly the selected occurrence is hidden, regardless of inline markdown formatting.
 
-**Architecture:** `SelectionToolbar` computes `{ start, end }` plain-text offsets by walking the DOM's text nodes. These offsets are stored in `hiddenPassages` (JSON array of `{start,end}` objects). At render time, `ExtractHighlighter` uses the `unified` / `remark-parse` AST to build a plain-text → markdown-source offset map and resolves each stored range to an exact markdown position for tombstone splicing.
+**Architecture:** `SelectionToolbar` computes `{ start, end }` plain-text offsets in the same coordinate space produced by `buildPlainTextMap(markdown)`. It walks rendered DOM text, ignores UI-only chrome, and treats tombstones as placeholders for the original hidden range length. These offsets are stored in `hiddenPassages` (JSON array of `{start,end}` objects). At render time, `ExtractHighlighter` uses the markdown AST to build a plain-text → markdown-source offset map and resolves each stored range to an exact markdown position for tombstone splicing.
 
 **Tech Stack:** TypeScript, tRPC (Zod input schemas), Prisma (SQLite), React, `unified` + `remark-parse` + `remark-gfm` + `unist-util-visit` (all already installed), Jest + `tsx --test` for testing.
 
@@ -317,7 +317,7 @@ git commit -m "refactor(reading): update hidePassage/restorePassage tRPC schemas
 - Modify: `open-brain/components/reading/ExtractHighlighter.tsx`
 - Test: `open-brain/tests/extractHighlighter.test.ts`
 
-**Concept:** `buildPlainTextMap(markdown)` parses the markdown with `remark`, walks `text` AST nodes (which have `position.start.offset` — their byte offset in the source string), and accumulates characters to produce `{ plainText, offsets }` where `offsets[i]` is the markdown source position for `plainText[i]`. Then `markHiddenPassages` uses this map to splice tombstones at the exact markdown source positions corresponding to `{start, end}` plain-text ranges.
+**Concept:** `buildPlainTextMap(markdown)` parses the markdown with `remark`, walks `text` AST nodes (which have `position.start.offset` — their byte offset in the source string), and accumulates characters to produce `{ plainText, offsets }` where `offsets[i]` is the markdown source position for `plainText[i]`. Then `markHiddenPassages` uses this map to splice tombstones at the exact markdown source positions corresponding to `{start, end}` plain-text ranges. Tombstones rendered from these ranges must carry their original `{start,end}` span so later DOM selections can keep counting in the original markdown plain-text coordinate space.
 
 - [ ] **Step 1: Write failing tests for `buildPlainTextMap` and the new `markHiddenPassages`**
 
@@ -656,7 +656,7 @@ git commit -m "refactor(reading): replace regex passage matching with AST-based 
 **Files:**
 - Modify: `open-brain/components/reading/SelectionToolbar.tsx`
 
-- [ ] **Step 1: Add the `getPlainTextOffset` helper and update `onDeletePassage` prop**
+- [ ] **Step 1: Add the annotated DOM offset helper and update `onDeletePassage` prop**
 
 Replace the full contents of `open-brain/components/reading/SelectionToolbar.tsx` with:
 
@@ -678,16 +678,11 @@ interface Position {
   left: number
 }
 
-function getPlainTextOffset(container: Element, targetNode: Node, targetOffset: number): number {
-  let count = 0
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  while (walker.nextNode()) {
-    const node = walker.currentNode
-    if (node === targetNode) return count + targetOffset
-    count += (node.textContent ?? '').length
-  }
-  return count + targetOffset
-}
+// Walk rendered content in markdown plain-text coordinates:
+// - text nodes count normally
+// - elements with data-plain-offset-ignore are skipped
+// - tombstones with data-plain-start/data-plain-end count as their original hidden length
+// Recompute from the live Range in the Delete passage click handler.
 
 export function SelectionToolbar({
   contentId,

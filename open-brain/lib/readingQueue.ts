@@ -111,7 +111,15 @@ export async function deleteItem(db: PrismaClient, id: string) {
   return item
 }
 
-function parseHiddenPassagesJson(hiddenPassages: string): string[] {
+export type HiddenPassage = { start: number; end: number }
+
+function isHiddenPassage(entry: unknown): entry is HiddenPassage {
+  if (typeof entry !== 'object' || entry === null) return false
+  const { start, end } = entry as { start?: unknown; end?: unknown }
+  return typeof start === 'number' && typeof end === 'number'
+}
+
+function parseHiddenPassagesJson(hiddenPassages: string): HiddenPassage[] {
   let parsed: unknown
   try {
     parsed = JSON.parse(hiddenPassages)
@@ -121,28 +129,29 @@ function parseHiddenPassagesJson(hiddenPassages: string): string[] {
       message: 'hiddenPassages must be valid JSON',
     })
   }
-  if (!Array.isArray(parsed) || !parsed.every((entry): entry is string => typeof entry === 'string')) {
+  if (!Array.isArray(parsed) || !parsed.every(isHiddenPassage)) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: 'hiddenPassages must be a JSON array of strings',
+      message: 'hiddenPassages must be a JSON array of { start, end } objects',
     })
   }
   return parsed
 }
 
-export async function hidePassage(db: PrismaClient, id: string, text: string) {
+export async function hidePassage(db: PrismaClient, id: string, start: number, end: number) {
   const item = await requireActiveReadingItem(db, id)
   const current = parseHiddenPassagesJson(item.hiddenPassages)
+  const range: HiddenPassage = { start, end }
   return db.readingItem.update({
     where: { id },
-    data: { hiddenPassages: JSON.stringify([...current, text]) },
+    data: { hiddenPassages: JSON.stringify([...current, range]) },
   })
 }
 
-export async function restorePassage(db: PrismaClient, id: string, text: string) {
+export async function restorePassage(db: PrismaClient, id: string, start: number, end: number) {
   const item = await requireActiveReadingItem(db, id)
   const current = parseHiddenPassagesJson(item.hiddenPassages)
-  const idx = current.indexOf(text)
+  const idx = current.findIndex((entry) => entry.start === start && entry.end === end)
   if (idx === -1) return item
   const next = [...current.slice(0, idx), ...current.slice(idx + 1)]
   return db.readingItem.update({ where: { id }, data: { hiddenPassages: JSON.stringify(next) } })

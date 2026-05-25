@@ -331,14 +331,14 @@ describe('reading item NOT_FOUND contract', () => {
 
   it('hidePassage rejects missing id', async () => {
     await assert.rejects(
-      () => hidePassage(prisma, missingReadingItemId, 'text'),
+      () => hidePassage(prisma, missingReadingItemId, 0, 4),
       assertNotFoundTrpcError
     )
   })
 
   it('restorePassage rejects missing id', async () => {
     await assert.rejects(
-      () => restorePassage(prisma, missingReadingItemId, 'text'),
+      () => restorePassage(prisma, missingReadingItemId, 0, 4),
       assertNotFoundTrpcError
     )
   })
@@ -964,26 +964,31 @@ describe('addUrlToQueue', () => {
   })
 })
 
+type HiddenPassageRange = { start: number; end: number }
+
 describe('hidePassage', () => {
-  it('appends passage to hiddenPassages JSON array', async () => {
+  it('appends passage range to hiddenPassages JSON array', async () => {
     const item = await prisma.readingItem.create({
       data: { title: 'Article', content: 'The sky is blue. The grass is green.', sourceType: 'URL' },
     })
-    const updated = await hidePassage(prisma, item.id, 'The sky is blue.')
-    const passages = JSON.parse(updated.hiddenPassages) as string[]
-    assert.deepEqual(passages, ['The sky is blue.'])
+    const updated = await hidePassage(prisma, item.id, 0, 16)
+    const passages = JSON.parse(updated.hiddenPassages) as HiddenPassageRange[]
+    assert.deepEqual(passages, [{ start: 0, end: 16 }])
     const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
-    assert.deepEqual(JSON.parse(raw.hiddenPassages) as string[], ['The sky is blue.'])
+    assert.deepEqual(JSON.parse(raw.hiddenPassages) as HiddenPassageRange[], [{ start: 0, end: 16 }])
   })
 
-  it('accumulates multiple hidden passages', async () => {
+  it('accumulates multiple hidden passage ranges', async () => {
     const item = await prisma.readingItem.create({
       data: { title: 'Article', content: 'A. B. C.', sourceType: 'URL' },
     })
-    await hidePassage(prisma, item.id, 'A.')
-    const updated = await hidePassage(prisma, item.id, 'B.')
-    const passages = JSON.parse(updated.hiddenPassages) as string[]
-    assert.deepEqual(passages, ['A.', 'B.'])
+    await hidePassage(prisma, item.id, 0, 2)
+    const updated = await hidePassage(prisma, item.id, 3, 5)
+    const passages = JSON.parse(updated.hiddenPassages) as HiddenPassageRange[]
+    assert.deepEqual(passages, [
+      { start: 0, end: 2 },
+      { start: 3, end: 5 },
+    ])
   })
 
   it('rejects soft-deleted items without mutating hiddenPassages', async () => {
@@ -992,21 +997,28 @@ describe('hidePassage', () => {
         title: 'Deleted',
         content: 'body',
         sourceType: 'URL',
-        hiddenPassages: '["keep"]',
+        hiddenPassages: '[{"start":0,"end":4}]',
         deletedAt: new Date(),
       },
     })
-    await assert.rejects(() => hidePassage(prisma, item.id, 'new'), assertNotFoundTrpcError)
+    await assert.rejects(() => hidePassage(prisma, item.id, 10, 13), assertNotFoundTrpcError)
     const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
-    assert.equal(raw.hiddenPassages, '["keep"]')
+    assert.equal(raw.hiddenPassages, '[{"start":0,"end":4}]')
   })
 
-  it('rejects malformed or non-string-array hiddenPassages without mutating', async () => {
-    for (const hiddenPassages of ['not json', '{"x":1}', '[1]']) {
+  it('rejects malformed hiddenPassages without mutating', async () => {
+    for (const hiddenPassages of [
+      'not json',
+      '{"x":1}',
+      '[1]',
+      '["legacy string"]',
+      '[{"start":0}]',
+      '[{"start":"0","end":1}]',
+    ]) {
       const item = await prisma.readingItem.create({
         data: { title: 'Bad', content: '', sourceType: 'URL', hiddenPassages },
       })
-      await assert.rejects(() => hidePassage(prisma, item.id, 'x'), /hiddenPassages/i)
+      await assert.rejects(() => hidePassage(prisma, item.id, 0, 1), /hiddenPassages/i)
       const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
       assert.equal(raw.hiddenPassages, hiddenPassages)
     }
@@ -1014,34 +1026,62 @@ describe('hidePassage', () => {
 })
 
 describe('restorePassage', () => {
-  it('removes the first matching passage from hiddenPassages', async () => {
+  it('removes the matching start/end range from hiddenPassages', async () => {
     const item = await prisma.readingItem.create({
-      data: { title: 'Article', content: 'A. B.', sourceType: 'URL', hiddenPassages: '["A.","B."]' },
+      data: {
+        title: 'Article',
+        content: 'A. B.',
+        sourceType: 'URL',
+        hiddenPassages: '[{"start":0,"end":2},{"start":3,"end":5}]',
+      },
     })
-    const updated = await restorePassage(prisma, item.id, 'A.')
-    const passages = JSON.parse(updated.hiddenPassages) as string[]
-    assert.deepEqual(passages, ['B.'])
+    const updated = await restorePassage(prisma, item.id, 0, 2)
+    const passages = JSON.parse(updated.hiddenPassages) as HiddenPassageRange[]
+    assert.deepEqual(passages, [{ start: 3, end: 5 }])
   })
 
-  it('removes only the first occurrence when text appears twice', async () => {
+  it('removes only the first matching start/end pair when duplicates exist', async () => {
     const item = await prisma.readingItem.create({
       data: {
         title: 'Article',
         content: 'dup',
         sourceType: 'URL',
-        hiddenPassages: '["dup","other","dup"]',
+        hiddenPassages:
+          '[{"start":0,"end":3},{"start":4,"end":9},{"start":0,"end":3}]',
       },
     })
-    const updated = await restorePassage(prisma, item.id, 'dup')
-    assert.deepEqual(JSON.parse(updated.hiddenPassages) as string[], ['other', 'dup'])
+    const updated = await restorePassage(prisma, item.id, 0, 3)
+    assert.deepEqual(JSON.parse(updated.hiddenPassages) as HiddenPassageRange[], [
+      { start: 4, end: 9 },
+      { start: 0, end: 3 },
+    ])
   })
 
-  it('returns unchanged item when text is not in hiddenPassages', async () => {
+  it('returns unchanged item when range is not in hiddenPassages', async () => {
     const item = await prisma.readingItem.create({
-      data: { title: 'Article', content: 'A.', sourceType: 'URL', hiddenPassages: '["A."]' },
+      data: {
+        title: 'Article',
+        content: 'A.',
+        sourceType: 'URL',
+        hiddenPassages: '[{"start":0,"end":2}]',
+      },
     })
-    const updated = await restorePassage(prisma, item.id, 'missing')
-    assert.deepEqual(JSON.parse(updated.hiddenPassages) as string[], ['A.'])
+    const updated = await restorePassage(prisma, item.id, 5, 10)
+    assert.deepEqual(JSON.parse(updated.hiddenPassages) as HiddenPassageRange[], [{ start: 0, end: 2 }])
+    assert.equal(updated.id, item.id)
+  })
+
+  it('does not remove a range when only start or end matches', async () => {
+    const item = await prisma.readingItem.create({
+      data: {
+        title: 'Article',
+        content: 'text',
+        sourceType: 'URL',
+        hiddenPassages: '[{"start":0,"end":5}]',
+      },
+    })
+    const updated = await restorePassage(prisma, item.id, 0, 99)
+    assert.deepEqual(JSON.parse(updated.hiddenPassages) as HiddenPassageRange[], [{ start: 0, end: 5 }])
     assert.equal(updated.id, item.id)
   })
 
@@ -1051,21 +1091,27 @@ describe('restorePassage', () => {
         title: 'Deleted',
         content: 'body',
         sourceType: 'URL',
-        hiddenPassages: '["A.","B."]',
+        hiddenPassages: '[{"start":0,"end":2},{"start":3,"end":5}]',
         deletedAt: new Date(),
       },
     })
-    await assert.rejects(() => restorePassage(prisma, item.id, 'A.'), assertNotFoundTrpcError)
+    await assert.rejects(() => restorePassage(prisma, item.id, 0, 2), assertNotFoundTrpcError)
     const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
-    assert.equal(raw.hiddenPassages, '["A.","B."]')
+    assert.equal(raw.hiddenPassages, '[{"start":0,"end":2},{"start":3,"end":5}]')
   })
 
-  it('rejects malformed or non-string-array hiddenPassages without mutating', async () => {
-    for (const hiddenPassages of ['not json', '{"x":1}', '[1]']) {
+  it('rejects malformed hiddenPassages without mutating', async () => {
+    for (const hiddenPassages of [
+      'not json',
+      '{"x":1}',
+      '[1]',
+      '["legacy string"]',
+      '[{"start":0}]',
+    ]) {
       const item = await prisma.readingItem.create({
         data: { title: 'Bad', content: '', sourceType: 'URL', hiddenPassages },
       })
-      await assert.rejects(() => restorePassage(prisma, item.id, 'x'), /hiddenPassages/i)
+      await assert.rejects(() => restorePassage(prisma, item.id, 0, 1), /hiddenPassages/i)
       const raw = await prisma.readingItem.findUniqueOrThrow({ where: { id: item.id } })
       assert.equal(raw.hiddenPassages, hiddenPassages)
     }

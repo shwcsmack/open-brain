@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   ExtractHighlighter,
+  type HiddenPassage,
   lookupWikipediaImport,
   wikipediaLookupKeys,
 } from '@/components/reading/ExtractHighlighter'
@@ -47,15 +48,25 @@ type ReadingItem = {
   hiddenPassages?: string | null
 }
 
-function parseHiddenPassagesJson(raw: string | null | undefined): string[] {
+function isHiddenPassage(entry: unknown): entry is HiddenPassage {
+  if (typeof entry !== 'object' || entry === null) return false
+  const { start, end } = entry as { start?: unknown; end?: unknown }
+  return typeof start === 'number' && typeof end === 'number'
+}
+
+function parseHiddenPassagesJson(raw: string | null | undefined): HiddenPassage[] {
   if (!raw) return []
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((entry): entry is string => typeof entry === 'string')
+    return parsed.filter(isHiddenPassage)
   } catch {
     return []
   }
+}
+
+function hiddenPassagesEqual(a: HiddenPassage, b: HiddenPassage): boolean {
+  return a.start === b.start && a.end === b.end
 }
 
 function trpcErrorMessage(err: { message?: string } | null | undefined): string {
@@ -150,7 +161,7 @@ export default function ReadingSessionPage() {
   const [pendingArticleDelete, setPendingArticleDelete] = useState(false)
   const [sessionActionPending, setSessionActionPending] = useState(false)
   const [localExtracts, setLocalExtracts] = useState<string[]>([])
-  const [localHiddenPassages, setLocalHiddenPassages] = useState<string[]>([])
+  const [localHiddenPassages, setLocalHiddenPassages] = useState<HiddenPassage[]>([])
   const addingWikipediaUrls = useRef(new Set<string>())
   const appliedStartFromRef = useRef<string | null | undefined>(undefined)
   const sessionReadyRef = useRef(false)
@@ -356,9 +367,9 @@ export default function ReadingSessionPage() {
       return
     }
     setLocalHiddenPassages(parseHiddenPassagesJson(current.hiddenPassages))
-  }, [current?.id])
+  }, [current?.id, current?.hiddenPassages])
 
-  const rollbackHiddenPassagesIfCurrent = useCallback((itemId: string, snapshot: string[]) => {
+  const rollbackHiddenPassagesIfCurrent = useCallback((itemId: string, snapshot: HiddenPassage[]) => {
     if (currentIdRef.current === itemId) {
       setLocalHiddenPassages(snapshot)
     }
@@ -413,23 +424,24 @@ export default function ReadingSessionPage() {
     setFlashcardModal({ open: true, front: text })
   }
 
-  function handleDeletePassage(text: string) {
+  function handleDeletePassage(start: number, end: number) {
     if (!current) return
     const itemId = current.id
-    let previous: string[] = []
+    const range = { start, end }
+    let previous: HiddenPassage[] = []
     let alreadyHidden = false
     setLocalHiddenPassages(prev => {
       previous = prev
-      if (prev.includes(text)) {
+      if (prev.some(p => hiddenPassagesEqual(p, range))) {
         alreadyHidden = true
         return prev
       }
-      return [...prev, text]
+      return [...prev, range]
     })
     if (alreadyHidden) return
 
     hidePassageMutation.mutate(
-      { id: itemId, text },
+      { id: itemId, start, end },
       {
         onError: () => {
           rollbackHiddenPassagesIfCurrent(itemId, previous)
@@ -439,29 +451,36 @@ export default function ReadingSessionPage() {
     )
   }
 
-  async function handleRestorePassages(texts: string[]) {
-    if (!current || texts.length === 0) return
+  async function handleRestorePassages(passages: HiddenPassage[]) {
+    if (!current || passages.length === 0) return
     const itemId = current.id
-    let previous: string[] = []
+    let previous: HiddenPassage[] = []
     setLocalHiddenPassages(prev => {
       previous = prev
-      let next = [...prev]
-      for (const text of texts) {
-        const idx = next.indexOf(text)
-        if (idx === -1) continue
-        next = [...next.slice(0, idx), ...next.slice(idx + 1)]
-      }
-      return next
+      return prev.filter(
+        p => !passages.some(r => hiddenPassagesEqual(p, r))
+      )
     })
 
     try {
-      for (const text of texts) {
-        await restorePassageMutation.mutateAsync({ id: itemId, text })
+      for (const passage of passages) {
+        await restorePassageMutation.mutateAsync({
+          id: itemId,
+          start: passage.start,
+          end: passage.end,
+        })
       }
     } catch {
-      rollbackHiddenPassagesIfCurrent(itemId, previous)
+      try {
+        const refetched = await utils.reading.getById.fetch({ id: itemId })
+        if (currentIdRef.current === itemId) {
+          setLocalHiddenPassages(parseHiddenPassagesJson(refetched.hiddenPassages))
+        }
+      } catch {
+        rollbackHiddenPassagesIfCurrent(itemId, previous)
+      }
       toast.error(
-        texts.length === 1 ? 'Failed to restore passage' : 'Failed to restore hidden passages'
+        passages.length === 1 ? 'Failed to restore passage' : 'Failed to restore hidden passages'
       )
     }
   }

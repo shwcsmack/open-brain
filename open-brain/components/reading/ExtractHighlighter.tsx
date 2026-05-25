@@ -1,8 +1,14 @@
 'use client'
 import { useMemo, type ReactNode } from 'react'
+import type { Link, Root, Text } from 'mdast'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { fromMarkdown } from 'mdast-util-from-markdown'
+import { gfmFromMarkdown } from 'mdast-util-gfm'
+import { gfm } from 'micromark-extension-gfm'
+import { visit } from 'unist-util-visit'
 import { preprocessWikilinks } from '@/components/editor/NoteViewer'
+import { tombstonePlainBounds } from '@/components/reading/plainTextOffset'
 import {
   canonicalWikipediaArticleUrl,
   extractWikipediaTitleFromUrl,
@@ -17,14 +23,19 @@ export interface WikipediaImportState {
   archivedAt: Date | string | null
 }
 
+export interface HiddenPassage {
+  start: number
+  end: number
+}
+
 interface Props {
   markdown: string
   extractedTexts: string[]
-  hiddenPassages?: string[]
+  hiddenPassages?: HiddenPassage[]
   importedWikipediaUrls?: Record<string, WikipediaImportState>
   onAddWikipediaLink?: (url: string) => void
-  onRestorePassage?: (text: string) => void
-  onRestorePassages?: (texts: string[]) => void
+  onRestorePassage?: (passage: HiddenPassage) => void
+  onRestorePassages?: (passages: HiddenPassage[]) => void
 }
 
 function isWikipediaUrl(href: string): boolean {
@@ -131,10 +142,87 @@ export function lookupWikipediaImport(
   return undefined
 }
 
+function passagesEqual(a: HiddenPassage, b: HiddenPassage): boolean {
+  return a.start === b.start && a.end === b.end
+}
+
+function addPassageToGroup(passages: HiddenPassage[], passage: HiddenPassage): void {
+  if (!passages.some((p) => passagesEqual(p, passage))) passages.push(passage)
+}
+
 function wikipediaActionSuffix(state: 'unimported' | 'active' | 'archived'): string {
   if (state === 'unimported') return ', add to reading queue'
   if (state === 'archived') return ', open archived Wikipedia article'
   return ', open Wikipedia article'
+}
+
+/** Plain text from mdast `text` nodes only; paragraph breaks add no separator (e.g. `a\n\nb` → `ab`). */
+export function buildPlainTextMap(markdown: string): {
+  plainText: string
+  offsets: number[]
+} {
+  const tree = fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  }) as Root
+  const chars: string[] = []
+  const offsets: number[] = []
+
+  visit(tree, 'text', (node: Text) => {
+    if (!node.position) return
+    const mdStart = node.position.start.offset ?? 0
+    for (let i = 0; i < node.value.length; i++) {
+      chars.push(node.value[i])
+      offsets.push(mdStart + i)
+    }
+  })
+
+  return { plainText: chars.join(''), offsets }
+}
+
+function parseMarkdownAst(markdown: string): Root {
+  return fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  }) as Root
+}
+
+/** When a hidden range lies in link label text, replace the full `[label](url)` span. */
+function expandMdRangeForEmbeddedLinks(
+  tree: Root,
+  mdStart: number,
+  mdEnd: number,
+): { mdStart: number; mdEnd: number } {
+  let start = mdStart
+  let end = mdEnd
+  visit(tree, 'link', (node: Link) => {
+    const pos = node.position
+    if (!pos) return
+    const linkStart = pos.start.offset ?? 0
+    const linkEnd = pos.end.offset ?? 0
+    if (mdStart < linkStart || mdEnd > linkEnd) return
+
+    let labelStart: number | undefined
+    let labelEnd: number | undefined
+    visit(node, 'text', (text: Text) => {
+      if (!text.position) return
+      const s = text.position.start.offset ?? 0
+      const e = text.position.end.offset ?? 0
+      labelStart = labelStart === undefined ? s : Math.min(labelStart, s)
+      labelEnd = labelEnd === undefined ? e : Math.max(labelEnd, e)
+    })
+
+    if (
+      labelStart !== undefined &&
+      labelEnd !== undefined &&
+      mdStart >= labelStart &&
+      mdEnd <= labelEnd
+    ) {
+      start = Math.min(start, linkStart)
+      end = Math.max(end, linkEnd)
+    }
+  })
+  return { mdStart: start, mdEnd: end }
 }
 
 function markExtracts(markdown: string, extracts: string[]): string {
@@ -151,70 +239,76 @@ function markExtracts(markdown: string, extracts: string[]): string {
 
 export function markHiddenPassages(
   markdown: string,
-  passages: string[]
-): { md: string; restoreMap: Record<string, string[]> } {
+  passages: HiddenPassage[]
+): { md: string; restoreMap: Record<string, HiddenPassage[]> } {
   if (passages.length === 0) return { md: markdown, restoreMap: {} }
 
-  interface Range {
-    start: number
-    end: number
-    text: string
+  const tree = parseMarkdownAst(markdown)
+  const { offsets } = buildPlainTextMap(markdown)
+
+  interface MdRange {
+    mdStart: number
+    mdEnd: number
+    passage: HiddenPassage
   }
 
-  const ranges: Range[] = []
-  for (const text of passages) {
-    const normalized = text.replace(/\s+/g, ' ').trim()
-    if (!normalized) continue
-    const escapedText = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    // Selection text collapses whitespace to single spaces; markdown may use \n\n etc.
-    const regexStr = escapedText.replace(/ /g, '\\s+')
-    const re = new RegExp(regexStr, 'gi')
-    let match: RegExpExecArray | null
-    while ((match = re.exec(markdown)) !== null) {
-      ranges.push({ start: match.index, end: match.index + match[0].length, text })
-    }
+  const mdRanges: MdRange[] = []
+  for (const p of passages) {
+    if (p.end <= p.start) continue
+    const mdStart = offsets[p.start]
+    const lastCharMdPos = offsets[p.end - 1]
+    if (mdStart === undefined || lastCharMdPos === undefined) continue
+    let mdEnd = lastCharMdPos + 1
+    const expanded = expandMdRangeForEmbeddedLinks(tree, mdStart, mdEnd)
+    mdRanges.push({ mdStart: expanded.mdStart, mdEnd: expanded.mdEnd, passage: p })
   }
 
-  if (ranges.length === 0) return { md: markdown, restoreMap: {} }
+  if (mdRanges.length === 0) return { md: markdown, restoreMap: {} }
 
-  ranges.sort((a, b) => a.start - b.start)
+  mdRanges.sort((a, b) => a.mdStart - b.mdStart)
 
-  const merged: { start: number; end: number; texts: string[]; key: string }[] = []
+  const merged: { mdStart: number; mdEnd: number; passages: HiddenPassage[]; key: string }[] =
+    []
   let groupCounter = 0
 
-  for (const range of ranges) {
+  for (const r of mdRanges) {
     const last = merged[merged.length - 1]
-    if (last) {
-      if (range.start < last.end) {
-        last.end = Math.max(last.end, range.end)
-        if (!last.texts.includes(range.text)) last.texts.push(range.text)
-        continue
-      }
-      const gap = markdown.slice(last.end, range.start)
+    if (last && r.mdStart <= last.mdEnd) {
+      last.mdEnd = Math.max(last.mdEnd, r.mdEnd)
+      addPassageToGroup(last.passages, r.passage)
+    } else if (last) {
+      const gap = markdown.slice(last.mdEnd, r.mdStart)
       if (/^\s*$/.test(gap)) {
-        last.end = range.end
-        if (!last.texts.includes(range.text)) last.texts.push(range.text)
-        continue
+        last.mdEnd = r.mdEnd
+        addPassageToGroup(last.passages, r.passage)
+      } else {
+        merged.push({
+          mdStart: r.mdStart,
+          mdEnd: r.mdEnd,
+          passages: [r.passage],
+          key: `restore-group-${groupCounter++}`,
+        })
       }
+    } else {
+      merged.push({
+        mdStart: r.mdStart,
+        mdEnd: r.mdEnd,
+        passages: [r.passage],
+        key: `restore-group-${groupCounter++}`,
+      })
     }
-    merged.push({
-      start: range.start,
-      end: range.end,
-      texts: [range.text],
-      key: `restore-group-${groupCounter++}`,
-    })
   }
 
-  const restoreMap: Record<string, string[]> = {}
+  const restoreMap: Record<string, HiddenPassage[]> = {}
   for (const m of merged) {
-    restoreMap[m.key] = m.texts
+    restoreMap[m.key] = m.passages
   }
 
   let result = markdown
-  for (const m of [...merged].sort((a, b) => b.start - a.start)) {
-    const count = m.texts.length
+  for (const m of [...merged].sort((a, b) => b.mdStart - a.mdStart)) {
+    const count = m.passages.length
     const label = count === 1 ? '1 passage hidden' : `${count} passages hidden`
-    result = result.slice(0, m.start) + `[${label}](#${m.key})` + result.slice(m.end)
+    result = result.slice(0, m.mdStart) + `[${label}](#${m.key})` + result.slice(m.mdEnd)
   }
 
   return { md: result, restoreMap }
@@ -245,8 +339,10 @@ function WikipediaLinkWithPill({
       className={`not-prose select-text inline-flex min-h-6 min-w-6 cursor-pointer items-center gap-1 rounded-sm border border-transparent bg-transparent p-0 text-primary underline ${FOCUS_RING}`}
     >
       <span className="underline select-text">{children}</span>
-      <span className="sr-only">{wikipediaActionSuffix(state)}</span>
-      <span className={pillClassName} aria-hidden="true">
+      <span className="sr-only" data-plain-offset-ignore="true">
+        {wikipediaActionSuffix(state)}
+      </span>
+      <span className={pillClassName} aria-hidden="true" data-plain-offset-ignore="true">
         {pillLabel}
       </span>
     </button>
@@ -255,9 +351,13 @@ function WikipediaLinkWithPill({
 
 function PassageTombstone({
   count,
+  plainStart,
+  plainEnd,
   onRestore,
 }: {
   count: number
+  plainStart: number
+  plainEnd: number
   onRestore: () => void
 }) {
   const label = count === 1 ? '1 passage hidden' : `${count} passages hidden`
@@ -268,6 +368,8 @@ function PassageTombstone({
     <span
       role="group"
       aria-label={label}
+      data-plain-start={plainStart}
+      data-plain-end={plainEnd}
       className={`not-prose my-1 inline-flex items-center gap-2 rounded border border-dashed border-muted-foreground/40 bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground`}
     >
       {label}
@@ -293,8 +395,8 @@ export function ExtractHighlighter({
   onRestorePassages,
 }: Props) {
   const { processedMarkdown, restoreMap } = useMemo(() => {
-    let md = markdown
-    let restoreMap: Record<string, string[]> = {}
+    let md = preprocessWikilinks(markdown)
+    let restoreMap: Record<string, HiddenPassage[]> = {}
     if (hiddenPassages.length > 0) {
       const hidden = markHiddenPassages(md, hiddenPassages)
       md = hidden.md
@@ -314,15 +416,18 @@ export function ExtractHighlighter({
           a: ({ href, children }) => {
             if (href?.startsWith('#restore-')) {
               const key = href.slice(1)
-              const texts = restoreMap[key]
-              if (texts?.length && (onRestorePassages || onRestorePassage)) {
+              const passages = restoreMap[key]
+              if (passages?.length && (onRestorePassages || onRestorePassage)) {
+                const { plainStart, plainEnd } = tombstonePlainBounds(passages)
                 return (
                   <PassageTombstone
-                    count={texts.length}
+                    count={passages.length}
+                    plainStart={plainStart}
+                    plainEnd={plainEnd}
                     onRestore={() => {
-                      if (onRestorePassages) onRestorePassages(texts)
+                      if (onRestorePassages) onRestorePassages(passages)
                       else if (onRestorePassage) {
-                        for (const text of texts) onRestorePassage(text)
+                        for (const p of passages) onRestorePassage(p)
                       }
                     }}
                   />
@@ -368,7 +473,7 @@ export function ExtractHighlighter({
           ),
         }}
       >
-        {preprocessWikilinks(processedMarkdown)}
+        {processedMarkdown}
       </ReactMarkdown>
     </div>
   )

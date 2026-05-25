@@ -8,7 +8,10 @@ import { TRPCClientError } from '@trpc/client'
 import { toast } from 'sonner'
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
-import { ExtractHighlighter } from '@/components/reading/ExtractHighlighter'
+import {
+  ExtractHighlighter,
+  type HiddenPassage,
+} from '@/components/reading/ExtractHighlighter'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -37,15 +40,25 @@ const NAV_LINK_CLASS = cn(
   FOCUS_RING
 )
 
-function parseHiddenPassagesJson(raw: string | null | undefined): string[] {
+function isHiddenPassage(entry: unknown): entry is HiddenPassage {
+  if (typeof entry !== 'object' || entry === null) return false
+  const { start, end } = entry as { start?: unknown; end?: unknown }
+  return typeof start === 'number' && typeof end === 'number'
+}
+
+function parseHiddenPassagesJson(raw: string | null | undefined): HiddenPassage[] {
   if (!raw) return []
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((entry): entry is string => typeof entry === 'string')
+    return parsed.filter(isHiddenPassage)
   } catch {
     return []
   }
+}
+
+function hiddenPassagesEqual(a: HiddenPassage, b: HiddenPassage): boolean {
+  return a.start === b.start && a.end === b.end
 }
 
 function trpcErrorMessage(err: { message?: string } | null | undefined): string {
@@ -178,7 +191,7 @@ export default function ReadingItemDetailPage() {
     enabled: !!id && !!item,
   })
 
-  const [localHiddenPassages, setLocalHiddenPassages] = useState<string[]>([])
+  const [localHiddenPassages, setLocalHiddenPassages] = useState<HiddenPassage[]>([])
 
   useEffect(() => {
     if (item) setLocalHiddenPassages(parseHiddenPassagesJson(item.hiddenPassages))
@@ -198,24 +211,24 @@ export default function ReadingItemDetailPage() {
   })
 
   const handleRestorePassages = useCallback(
-    async (texts: string[]) => {
-      if (!item || texts.length === 0) return
+    async (passages: HiddenPassage[]) => {
+      if (!item || passages.length === 0) return
       const itemId = item.id
-      let previous: string[] = []
+      let previous: HiddenPassage[] = []
       setLocalHiddenPassages(prev => {
         previous = prev
-        let next = [...prev]
-        for (const text of texts) {
-          const idx = next.indexOf(text)
-          if (idx === -1) continue
-          next = [...next.slice(0, idx), ...next.slice(idx + 1)]
-        }
-        return next
+        return prev.filter(
+          p => !passages.some(r => hiddenPassagesEqual(p, r))
+        )
       })
 
       try {
-        for (const text of texts) {
-          await restorePassageMutation.mutateAsync({ id: itemId, text })
+        for (const passage of passages) {
+          await restorePassageMutation.mutateAsync({
+            id: itemId,
+            start: passage.start,
+            end: passage.end,
+          })
         }
         void utils.reading.getById.invalidate({ id: itemId })
       } catch {
@@ -227,7 +240,7 @@ export default function ReadingItemDetailPage() {
           setLocalHiddenPassages(previous)
         }
         toast.error(
-          texts.length === 1 ? 'Failed to restore passage' : 'Failed to restore hidden passages'
+          passages.length === 1 ? 'Failed to restore passage' : 'Failed to restore hidden passages'
         )
       }
     },

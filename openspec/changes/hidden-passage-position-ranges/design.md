@@ -54,13 +54,16 @@ Both bugs share the same root cause: text-based identity has no concept of locat
 
 ### D2: Compute offsets via DOM tree walking at selection time
 
-- **Choice**: In `SelectionToolbar`, replace `sel.toString()` with a DOM tree walker that
-  accumulates text-node character counts to compute absolute plain-text offsets for
-  `range.startContainer/startOffset` and `range.endContainer/endOffset` within the content
-  container element.
+- **Choice**: In `SelectionToolbar`, replace `sel.toString()` for passage deletion with a DOM
+  walker that accumulates only text contributing to the markdown plain-text coordinate space.
+  UI-only text (Wikipedia import pill chrome, screen-reader suffixes) is ignored, and tombstone
+  placeholders count as the length of the original hidden range they replaced. The delete click
+  handler recomputes offsets from the live `Range` before calling `onDeletePassage(start, end)`.
 - **Rationale**: The DOM selection's `Range` object gives precise node-level positions. Walking
-  text nodes within the container is straightforward (~20 lines) and correct for all inline
-  formatting cases. Works regardless of what ReactMarkdown generates.
+  text nodes within the rendered article is straightforward for inline formatting, but the
+  rendered article also contains UI chrome that is not part of the markdown source. Explicit DOM
+  annotations keep the selection coordinate system aligned with `buildPlainTextMap(markdown)`,
+  including after one or more tombstones are already visible.
 - **Alternatives considered**:
   - *`Range.getBoundingClientRect` + character counting*: Approximate, not byte-accurate.
   - *Custom rehype plugin injecting position markers*: More complex, requires touching the
