@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Loader2 } from 'lucide-react'
 
 function isEnWikipediaUrl(raw: string): boolean {
   try {
@@ -52,7 +53,6 @@ export default function ReadingAddPage() {
   const activeQuery = isWikiFetch ? wikiQuery : urlPreviewQuery
   const isFetching = submittedUrl !== null && activeQuery.isFetching
   const fetchError = submittedUrl !== null && activeQuery.isError ? activeQuery.error : null
-  const wikiArticle = wikiQuery.data
   const urlPreview = urlPreviewQuery.data
 
   const addWikipedia = trpc.reading.addWikipedia.useMutation({
@@ -82,6 +82,15 @@ export default function ReadingAddPage() {
     onError: err => toast.error(trpcErrorMessage(err)),
   })
 
+  const isUrlFlowBusy =
+    isFetching || addWikipedia.isPending || addUrl.isPending
+
+  useEffect(() => {
+    if (wikiQuery.data && addWikipedia.isIdle) {
+      addWikipedia.mutate(wikiQuery.data)
+    }
+  }, [wikiQuery.data, addWikipedia.isIdle])
+
   const { data: noteMatches = [] } = trpc.note.searchTitles.useQuery(
     { q: noteQuery.trim() },
     { enabled: noteQuery.trim().length > 0 }
@@ -94,12 +103,14 @@ export default function ReadingAddPage() {
   }
 
   function resetUrlFlow() {
+    addWikipedia.reset()
     setSubmittedUrl(null)
     clearManualPaste()
   }
 
   function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (isUrlFlowBusy) return
     const trimmed = urlInput.trim()
     if (!trimmed) return
     try {
@@ -108,16 +119,9 @@ export default function ReadingAddPage() {
       toast.error('Enter a valid URL')
       return
     }
+    addWikipedia.reset()
     clearManualPaste()
     setSubmittedUrl(trimmed)
-  }
-
-  function handleAddWholeArticle() {
-    if (!wikiArticle) {
-      toast.error('No article loaded')
-      return
-    }
-    addWikipedia.mutate(wikiArticle)
   }
 
   function handleConfirmUrlPreview() {
@@ -143,8 +147,6 @@ export default function ReadingAddPage() {
     })
   }
 
-  const showWikiPreview =
-    isWikiFetch && !isFetching && !fetchError && wikiArticle !== undefined
   const showUrlPreview =
     !isWikiFetch && !isFetching && !fetchError && urlPreview !== undefined
 
@@ -210,21 +212,37 @@ export default function ReadingAddPage() {
               placeholder="https://en.wikipedia.org/wiki/..."
               value={urlInput}
               onChange={e => setUrlInput(e.target.value)}
-              disabled={isFetching || addWikipedia.isPending || addUrl.isPending}
+              disabled={isUrlFlowBusy}
             />
             <div className="flex gap-2">
-              <Button type="submit" disabled={!urlInput.trim() || isFetching}>
-                Fetch preview
+              <Button type="submit" disabled={!urlInput.trim() || isUrlFlowBusy}>
+                {isEnWikipediaUrl(urlInput) ? 'Add to queue' : 'Fetch preview'}
               </Button>
               {submittedUrl && (
-                <Button type="button" variant="outline" onClick={resetUrlFlow}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetUrlFlow}
+                  disabled={isUrlFlowBusy}
+                >
                   Clear
                 </Button>
               )}
             </div>
           </form>
 
-          {isFetching && (
+          {isWikiFetch && (wikiQuery.isFetching || addWikipedia.isPending) && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <p>
+                {wikiQuery.isFetching
+                  ? 'Fetching Wikipedia article…'
+                  : 'Saving to reading queue…'}
+              </p>
+            </div>
+          )}
+
+          {!isWikiFetch && isFetching && (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-24 w-full" />
@@ -287,21 +305,6 @@ export default function ReadingAddPage() {
                 disabled={addUrl.isPending || !manualContent.trim()}
               >
                 Add to queue
-              </Button>
-            </div>
-          )}
-
-          {showWikiPreview && (
-            <div className="flex flex-col gap-4">
-              <div>
-                <h3 className="text-lg font-semibold">{wikiArticle.title}</h3>
-                <p className="text-xs text-muted-foreground mt-1">{submittedUrl}</p>
-              </div>
-              <div className="rounded-lg border p-4 max-h-96 overflow-y-auto">
-                <NoteViewer markdown={wikiArticle.content} />
-              </div>
-              <Button onClick={handleAddWholeArticle} disabled={addWikipedia.isPending}>
-                Add whole article to queue
               </Button>
             </div>
           )}
