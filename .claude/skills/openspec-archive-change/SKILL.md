@@ -82,7 +82,34 @@ Archive a completed change in the experimental workflow.
    mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
    ```
 
-6. **Display summary**
+6. **Post-archive: sweep stale `openspec/changes/<name>/` copies in sibling worktrees**
+
+   `openspec archive` only moves the folder inside the current worktree. If the change directory also exists (tracked or untracked) in another worktree of the same repo — most commonly the main checkout where the change was first authored — it will be left behind as orphan files after merge.
+
+   Enumerate every worktree of this repo and check each one:
+
+   ```bash
+   git worktree list --porcelain | awk '/^worktree /{print $2}' | while read wt; do
+     if [ -d "$wt/openspec/changes/<name>" ]; then
+       echo "STALE_CHANGE_DIR $wt/openspec/changes/<name>"
+     fi
+   done
+   ```
+
+   For each path printed:
+
+   - Confirm it does NOT contain newer artifacts than what was just archived (compare against `openspec/changes/archive/YYYY-MM-DD-<name>/`). If anything is newer, STOP and surface the conflict — do not delete.
+   - If the path is strictly older or equal to the archived copy, ask the user for consent to remove it:
+
+     ```bash
+     rm -rf "<path>"
+     ```
+
+   - If the path was tracked in its worktree (i.e. `git -C "<wt>" ls-files -- "openspec/changes/<name>"` returns lines), use `git rm -r` from inside that worktree instead and remind the user to commit the deletion on that branch.
+
+   Skip this step only if `git worktree list` reports a single worktree.
+
+7. **Display summary**
 
    Show archive completion summary including:
    - Change name
@@ -90,6 +117,7 @@ Archive a completed change in the experimental workflow.
    - Archive location
    - Whether specs were synced (if applicable)
    - Note about any warnings (incomplete artifacts/tasks)
+   - List of sibling-worktree stale copies removed in Step 6 (or "none found")
 
 **Output On Success**
 
@@ -112,3 +140,4 @@ All artifacts complete. All tasks complete.
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- **Always run the sibling-worktree sweep in Step 6** before declaring the archive complete; archive in one worktree must not leave stale `openspec/changes/<name>/` copies in other worktrees of the same repo
