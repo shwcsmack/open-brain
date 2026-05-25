@@ -58,9 +58,9 @@ The codebase is a Next.js app with tRPC for API calls and Prisma + SQLite for pe
 
 ### D5: Wikipedia import produces one item per article
 
-- **Choice:** `fetchWikipediaForReading` concatenates all sections into a single string with `## Section Title` headings. `addWikipediaToQueue` accepts this as one item. `sourceType` stays `WIKIPEDIA_SECTION` (rename to `WIKIPEDIA` is a non-goal).
-- **Reason:** Per-section items fragment context. Users prefer to clean up articles progressively using the new delete-passage action. The section picker adds friction without benefit given delete-passage exists.
-- **Alternatives considered:** Keep section picker as optional — rejected to avoid maintaining two code paths. New `WIKIPEDIA` enum value — rejected as a rename with no functional benefit.
+- **Choice:** `fetchWikipediaForReading` concatenates all sections into a single string with `## Section Title` headings. `addWikipediaToQueue` accepts this as one item. The `ReadingSource` enum value `WIKIPEDIA_SECTION` is renamed to `WIKIPEDIA` in the same migration (Prisma `@map` + SQLite column value update).
+- **Reason:** Per-section items fragment context. Users prefer to clean up articles progressively using the new delete-passage action. The section picker adds friction without benefit given delete-passage exists. Since all Wikipedia import code paths are being rewritten in this change, renaming the enum now costs nothing and keeps the data model semantically correct.
+- **Alternatives considered:** Keep section picker as optional — rejected to avoid maintaining two code paths. Defer rename — rejected; this is the right moment since all callers are being updated anyway.
 
 ### D6: Wikipedia tracking via articleUrl query
 
@@ -80,7 +80,7 @@ The codebase is a Next.js app with tRPC for API calls and Prisma + SQLite for pe
 
 [Risk] `startFrom` prepends non-due items, which could cause an item to appear in a session before its scheduled due date → Mitigation: This is intentional — the user explicitly chose to read it. FSRS scheduling is only affected when the item is rated, not when it is viewed.
 
-[Trade-off] Keeping `sourceType = WIKIPEDIA_SECTION` for whole-article imports is semantically inaccurate → Accepted to avoid a migration that touches every existing Wikipedia row with no functional benefit. A cleanup rename can happen in a later change.
+[Migration] Renaming `WIKIPEDIA_SECTION` → `WIKIPEDIA` in the `ReadingSource` enum requires a Prisma migration that updates existing rows. SQLite does not support `ALTER TYPE`, so the migration uses a raw `UPDATE ReadingItem SET sourceType = 'WIKIPEDIA' WHERE sourceType = 'WIKIPEDIA_SECTION'` statement after the schema change → Mitigation: Wrapped in the same migration file as the `archivedAt`/`hiddenPassages` additions; tested with the existing `reading.test.ts` suite.
 
 [Trade-off] `getImportedWikipediaUrls` fetches all tracked Wikipedia URLs on every session mount — could be slow with thousands of items → Accepted for now; at typical personal PKM scale (hundreds of items) this is negligible. Add pagination or a dedicated index if it becomes a problem.
 
