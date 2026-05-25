@@ -58,9 +58,9 @@ The codebase is a Next.js app with tRPC for API calls and Prisma + SQLite for pe
 
 ### D5: Wikipedia import produces one item per article
 
-- **Choice:** `fetchWikipediaForReading` concatenates all sections into a single string with `## Section Title` headings. `addWikipediaToQueue` accepts this as one item. The `ReadingSource` enum value `WIKIPEDIA_SECTION` is renamed to `WIKIPEDIA` in the same migration (Prisma `@map` + SQLite column value update).
-- **Reason:** Per-section items fragment context. Users prefer to clean up articles progressively using the new delete-passage action. The section picker adds friction without benefit given delete-passage exists. Since all Wikipedia import code paths are being rewritten in this change, renaming the enum now costs nothing and keeps the data model semantically correct.
-- **Alternatives considered:** Keep section picker as optional — rejected to avoid maintaining two code paths. Defer rename — rejected; this is the right moment since all callers are being updated anyway.
+- **Choice:** `fetchWikipediaForReading` concatenates all sections into a single string with `## Section Title` headings. `addWikipediaToQueue` accepts this as one item. The `ReadingSource` enum value `WIKIPEDIA_SECTION` is renamed to `WIKIPEDIA` in the same migration. Existing rows with `sourceType = 'WIKIPEDIA_SECTION'` are hard-deleted in the migration — they are per-section fragments that are no longer valid in the whole-article model.
+- **Reason:** Per-section items fragment context. Keeping the old rows would leave the queue polluted with stale fragments that cannot be re-read as whole articles. Since all Wikipedia import code paths are being rewritten in this change, the cleanup costs nothing.
+- **Alternatives considered:** Keep old rows as-is — rejected because they are incompatible with the new model and would confuse the Wikipedia tracking (stale ✓ pills). Archive instead of delete — rejected because the fragments have no standalone value; archiving them would clutter the archive log with meaningless entries.
 
 ### D6: Wikipedia tracking via articleUrl query
 
@@ -80,7 +80,7 @@ The codebase is a Next.js app with tRPC for API calls and Prisma + SQLite for pe
 
 [Risk] `startFrom` prepends non-due items, which could cause an item to appear in a session before its scheduled due date → Mitigation: This is intentional — the user explicitly chose to read it. FSRS scheduling is only affected when the item is rated, not when it is viewed.
 
-[Migration] Renaming `WIKIPEDIA_SECTION` → `WIKIPEDIA` in the `ReadingSource` enum requires a Prisma migration that updates existing rows. SQLite does not support `ALTER TYPE`, so the migration uses a raw `UPDATE ReadingItem SET sourceType = 'WIKIPEDIA' WHERE sourceType = 'WIKIPEDIA_SECTION'` statement after the schema change → Mitigation: Wrapped in the same migration file as the `archivedAt`/`hiddenPassages` additions; tested with the existing `reading.test.ts` suite.
+[Migration] Existing `WIKIPEDIA_SECTION` rows are hard-deleted and the enum value renamed to `WIKIPEDIA`. The migration executes: `DELETE FROM ReadingItem WHERE sourceType = 'WIKIPEDIA_SECTION'` followed by the enum rename. This is a destructive data migration → Mitigation: Self-hosted single-user app; user is aware of and requested this cleanup. Wrapped in the same migration as `archivedAt`/`hiddenPassages` additions.
 
 [Trade-off] `getImportedWikipediaUrls` fetches all tracked Wikipedia URLs on every session mount — could be slow with thousands of items → Accepted for now; at typical personal PKM scale (hundreds of items) this is negligible. Add pagination or a dedicated index if it becomes a problem.
 

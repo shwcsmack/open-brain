@@ -30,9 +30,9 @@ The reading queue has no item management: there is no way to delete or archive i
 
 **Wikipedia whole-article import**
 - From: Wikipedia import presents a section picker; users select individual sections as separate `ReadingItem`s.
-- To: One `ReadingItem` per Wikipedia article; all sections concatenated. Section picker removed from the Add page and the in-session link handler. `ReadingSource` enum value renamed from `WIKIPEDIA_SECTION` to `WIKIPEDIA`.
-- Reason: Users want to clean up articles themselves while reading (using delete-passage) rather than pre-selecting sections. The rename is done now since all callers are being updated in this change anyway.
-- Impact: Breaking change to `addWikipediaToQueue` signature and the Add page UX. Prisma migration updates existing rows.
+- To: One `ReadingItem` per Wikipedia article; all sections concatenated. Section picker removed from the Add page and the in-session link handler. `ReadingSource` enum value renamed from `WIKIPEDIA_SECTION` to `WIKIPEDIA`. Existing per-section rows are hard-deleted in the migration.
+- Reason: Per-section rows are stale fragments incompatible with the new whole-article model. Keeping them would pollute the queue and corrupt Wikipedia tracking state.
+- Impact: Destructive data migration (existing Wikipedia items deleted). Breaking change to `addWikipediaToQueue` signature and the Add page UX.
 
 **Delete text passage while reading**
 - From: Selection toolbar offers Extract, Save as note, Create flashcard.
